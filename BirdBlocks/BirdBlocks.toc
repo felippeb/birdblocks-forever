@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: Bird Blocks
+## Notes: Game Boy and NES Tetris, playable on the flight-path bird. /blocks to open.
+## Author: felippeb
+## Version: 0.1.0
+## SavedVariables: BirdBlocksDB
+## IconTexture: Interface\AddOns\BirdBlocks\icon.tga
+## X-Category: Miscellaneous
+## X-Website: https://github.com/felippeb/birdblocks-forever
+
+src\generated_atlas.lua
+src\generated_audio.lua
+src\engine.lua
+src\render.lua
+src\view.lua
+src\sound.lua
+src\ui.lua

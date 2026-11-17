@@ -1,0 +1,135 @@
+# Publishes to CurseForge. Runs only on a version tag or by hand.
+#
+# Trust boundaries, in order of importance:
+#   * verify  - no secrets, contents:read, one pinned action
+#   * publish - environment-gated, the token lives in one step's env only,
+#               and the code that touches it is our own stdlib script
+# Nothing from the network runs in the publish job: no pip, no third-party
+# action, no shell helper. What ships is built from this commit, audited, then
+# uploaded.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label, e.g. 0.1.0 or 0.2.0-beta.1 (ignored on a tag push)"
+        required: false
+        default: ""
+      release_type:
+        description: "CurseForge release type"
+        type: choice
+        options: [alpha, beta, release]
+        default: alpha
+      dry_run:
+        description: "Build, audit and print metadata; upload nothing"
+        type: boolean
+        default: false
+      manual_release:
+        description: "Upload but keep the file held for manual release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'felippeb/birdblocks-forever'
+    uses: ./.github/workflows/_verify.yml
+    with:
+      version: ${{ inputs.version || '0.0.0-ci' }}
+      dry_run: ${{ inputs.dry_run || false }}
+
+  publish:
+    needs: verify
+    if: |
+      github.repository == 'felippeb/birdblocks-forever' &&
+      !inputs.dry_run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Repository secret lives on this environment, with required reviewers and
+    # a branch/tag policy, so a run has to be approved before the token exists.
+    environment: curseforge
+    permissions:
+      contents: write # GitHub release asset
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve version and release type
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TYPE: ${{ inputs.release_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then
+            version="${INPUT_VERSION}"
+          else
+            version="${REF_NAME#v}"
+          fi
+          if [ -z "${version}" ]; then
+            echo "::error::no version: pass one, or run from a v* tag"
+            exit 1
+          fi
+          if [ -n "${INPUT_TYPE}" ]; then
+            release_type="${INPUT_TYPE}"
+          elif [[ "${REF_NAME}" == *-beta* ]]; then
+            release_type=beta
+          else
+            release_type=release
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release_type=${release_type}" >> "$GITHUB_OUTPUT"
+          echo "resolved ${version} as ${release_type}"
+
+      - name: Build archive
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: pwsh -NoProfile -NonInteractive -File ./build-zip.ps1 -Version "$VERSION" -OutDir release
+
+      - name: Audit archive
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: python3 tools/audit_zip.py --file "release/BirdBlocks-$VERSION.zip"
+
+      - name: Publish to CurseForge
+        env:
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          CF_GAME_VERSIONS: ${{ vars.CF_GAME_VERSIONS }}
+          CF_GAME_VERSION_NAME: ${{ vars.CF_GAME_VERSION_NAME || '1.60.1' }}
+          VERSION: ${{ steps.v.outputs.version }}
+          RELEASE_TYPE: ${{ steps.v.outputs.release_type }}
+          MANUAL: ${{ inputs.manual_release }}
+        run: |
+          set -euo pipefail
+          args=(--file "release/BirdBlocks-$VERSION.zip"
+                --version "$VERSION"
+                --release-type "$RELEASE_TYPE")
+          if [ "${MANUAL}" = "true" ]; then
+            args+=(--manual-release)
+          fi
+          python3 tools/cf_release.py "${args[@]}"
+
+      - name: GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" "release/BirdBlocks-$VERSION.zip" \
+            --verify-tag --title "$VERSION" --generate-notes

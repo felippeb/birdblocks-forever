@@ -1,0 +1,21 @@
+# Keep the tested byte layout: CRLF working tree for game files.
+* text=auto
+
+*.lua  text eol=crlf
+*.toc  text eol=crlf
+*.xml  text eol=crlf
+*.ps1  text eol=crlf
+*.md   text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# binaries
+*.png  binary
+*.blp  binary
+*.tga  binary
+*.ogg  binary
+*.wav  binary
+*.ttf  binary
+*.otf  binary
+*.ttc  binary

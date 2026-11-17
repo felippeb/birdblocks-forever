@@ -1,0 +1,25 @@
+# Build output
+release/
+*.zip
+
+# Test artifacts (regenerate with tests/screenshots.lua + tests/rasterize.py)
+tests/out/
+
+# Editor / local junk
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+*.bak
+*.orig
+*~
+
+# Python tooling (asset generator, luaparser checks)
+__pycache__/
+*.pyc
+.venv/
+
+# Never commit game state or private data
+WTF/
+Logs/
+SavedVariables/
