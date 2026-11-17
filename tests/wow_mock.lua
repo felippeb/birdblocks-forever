@@ -67,9 +67,11 @@ function Texture:SetTexCoord(...)
 	local n = select("#", ...)
 	local a = { ... }
 	if n >= 8 then
+		-- ULx, ULy, LLx, LLy, URx, URy, LRx, LRy
 		self.uv = { a[1], a[2], a[5], a[8] }
 	elseif n >= 4 then
-		self.uv = { a[1], a[2], a[3], a[4] }
+		-- left, right, top, bottom
+		self.uv = { a[1], a[3], a[2], a[4] }
 	else
 		self.uv = nil
 	end

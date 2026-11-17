@@ -170,11 +170,16 @@ function Render:rect(x, y, w, h, r, g, b, a, layerID)
 	local t = lay.tex[n] or newTexture(lay)
 	local s = self.scale
 	anchor(lay, t, x, y, w * s, h * s, s, self.ox, self.oy)
+	-- A pooled texture may have been drawing atlas art on the previous frame.
+	-- SetColorTexture has to be re-issued even when the colour matches the
+	-- vertex colour it happens to carry, or the old tile would show through.
 	if t.atlas then
 		t.atlas = nil
 		t:SetTexCoord(0, 1, 0, 1)
-	end
-	if t.dr ~= r or t.dg ~= g or t.db ~= b or t.da ~= a then
+		t:SetColorTexture(r, g, b, a)
+		t.dr, t.dg, t.db, t.da = r, g, b, a
+		t:SetVertexColor(1, 1, 1, 1)
+	elseif t.dr ~= r or t.dg ~= g or t.db ~= b or t.da ~= a then
 		t.dr, t.dg, t.db, t.da = r, g, b, a
 		t:SetColorTexture(r, g, b, a)
 		t:SetVertexColor(1, 1, 1, 1)

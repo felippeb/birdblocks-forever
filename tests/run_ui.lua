@@ -272,6 +272,23 @@ check("taxi starts a new run after game over",
 Mock.taxi = false
 advance(3.0)
 
+--------------------------------------------------------------------------- renderer pooling
+
+-- A texture reused as a solid rect after drawing atlas art must switch back
+-- to colour mode even when the requested colour equals the tile's vertex
+-- colour; otherwise the previous frame's tile shows through the bezel.
+local R = BirdBlocks.Render
+local layer = UI.render:layer(R.LAYER_FIELD)
+UI.render:beginFrame()
+UI.render:tile("gb_block", 0, 0, 8, 8, 1, 1, 1, 1)
+UI.render:finish()
+UI.render:beginFrame()
+UI.render:rect(0, 0, 8, 8, 1, 1, 1, 1, R.LAYER_FIELD)
+local tex = layer.tex[1]
+check("rect after tile switches to colour mode", tex.colorMode == true)
+check("rect after tile resets the atlas UV", tex.uv ~= nil and tex.uv[1] == 0 and tex.uv[3] == 1)
+UI.render:finish()
+
 --------------------------------------------------------------------------- report
 
 print(string.format("%d passed, %d failed", passed, failed))
