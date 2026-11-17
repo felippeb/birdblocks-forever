@@ -83,6 +83,7 @@ function UI:Init()
 	self.autoOpened = false
 	self.taxiTime = 0
 	self.taxiGone = 0
+	self.rideOpened = false
 	self.reopenAfterCombat = false
 	self.keysHeld = {}
 	self.ready = true
@@ -249,6 +250,11 @@ function UI:Open(auto)
 	self.autoOpened = auto and true or false
 	self.accumulator = 0
 	self.keysHeld = {}
+	-- One automatic open per flight: if the player closes the window while
+	-- still flying, leave it closed until the next taxi.
+	if UnitOnTaxi and UnitOnTaxi("player") then
+		self.rideOpened = true
+	end
 	self.frame:Show()
 	self.frame:EnableKeyboard(true)
 	-- Reopening always resumes a paused game: otherwise landing and taking
@@ -514,19 +520,25 @@ end
 function UI:PollTaxi(elapsed)
 	if not self.db.autoOpen then
 		self.taxiTime = 0
+		self.rideOpened = false
 		return
 	end
 	local onTaxi = UnitOnTaxi and UnitOnTaxi("player")
 	if onTaxi then
 		self.taxiGone = 0
 		self.taxiTime = self.taxiTime + elapsed
-		if self.taxiTime >= 1.5 and not self.shown and not self.reopenAfterCombat then
+		-- One automatic open per flight: closing the window mid-air means the
+		-- player is done playing, not that they want it back a second later.
+		if self.taxiTime >= 1.5 and not self.shown
+			and not self.rideOpened and not self.reopenAfterCombat then
 			if not (InCombatLockdown and InCombatLockdown()) then
+				self.rideOpened = true
 				self:Open(true)
 			end
 		end
 	else
 		self.taxiTime = 0
+		self.rideOpened = false
 		if self.shown and self.autoOpened then
 			self.taxiGone = self.taxiGone + elapsed
 			if self.taxiGone >= 2 then

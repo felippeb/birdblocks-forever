@@ -55,6 +55,8 @@ consumed while it is open, so nothing leaks to the world.
   immediately — Enter also works, it is not a title-screen stop.
 - Closes **2 s** after the flight ends.
 - Closes instantly in combat and reopens when combat ends if you are still flying.
+- One automatic open per flight: close it mid-air and it stays closed until the
+  next taxi.
 - Leaving the game paused (or closing it) stops the music; nothing plays on the ground.
 - `/blocks auto` turns the automatic behaviour off entirely.
 

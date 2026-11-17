@@ -35,6 +35,8 @@ First release.
 - Pauses and closes in combat, reopens when combat ends while still flying.
 - Reopening resumes a paused run; a top-out followed by another flight starts a
   fresh game rather than leaving a GAME OVER screen up.
+- Closing the window mid-flight keeps it closed for the rest of that flight
+  instead of popping back open a second later.
 - Music follows play: it stops on pause and game over and restarts on resume.
 - `/blocks` and `/bb` commands for profile, zoom, start level, audio and scores.
 - Keyboard input is captured only while the window is open.

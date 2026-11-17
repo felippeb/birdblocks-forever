@@ -160,6 +160,22 @@ UI.db.autoOpen = true
 Mock.taxi = false
 advance(3.0)
 
+-- Closing the window mid-flight is final for that flight: it must not pop
+-- back open a second later, but the next flight must still open normally.
+Mock.taxi = true
+advance(2.0)
+check("opens on the next flight", UI:IsShown())
+UI:Close()
+advance(4.0)
+check("closing mid-flight keeps it closed", not UI:IsShown())
+Mock.taxi = false
+advance(3.0)
+Mock.taxi = true
+advance(2.0)
+check("the flight after that opens again", UI:IsShown())
+Mock.taxi = false
+advance(3.0)
+
 --------------------------------------------------------------------------- combat
 
 Mock.taxi = true
