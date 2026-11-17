@@ -1,21 +1,24 @@
 # Publishing
 
 The pipeline mirrors the other Forever addons: CI builds and audits the archive,
-and a tag publishes it to CurseForge and creates a GitHub release.
+a tag always creates a GitHub release, and the same tag uploads to CurseForge
+once the project is configured.
 
-## One-time setup
+## One-time setup for CurseForge
 
-1. **GitHub repository** — `felippeb/birdblocks-forever`. The release workflow
-   is gated on this exact name (`.github/workflows/release.yml`).
-2. **CurseForge project** — create it by hand, then note the numeric project id
+None of this is needed for a GitHub release; without it the upload job is simply
+skipped.
+
+1. **CurseForge project** — create it by hand, then note the numeric project id
    from the project page (`/projects/<id>`).
-3. **Environment** — in the repository, create an environment called
+2. **Environment** — in the repository, create an environment called
    `curseforge` with required reviewers and a tag policy. The token lives on the
    environment, so a release run must be approved before it exists.
-4. **Secret** — `CURSEFORGE_API_TOKEN` (repository or environment secret).
-5. **Variables** — `CURSEFORGE_PROJECT_ID`, and optionally
-   `CF_GAME_VERSION_NAME` (default `1.60.1`) or `CF_GAME_VERSIONS` with the
-   numeric game-version id if discovery ever becomes ambiguous.
+3. **Secret** — `CURSEFORGE_API_TOKEN` (repository or environment secret).
+4. **Variables** — `CURSEFORGE_PROJECT_ID` (the switch: while it is unset, the
+   upload job does not run), and optionally `CF_GAME_VERSION_NAME` (default
+   `1.60.1`) or `CF_GAME_VERSIONS` with the numeric game-version id if
+   discovery ever becomes ambiguous.
 
 The game version is resolved by display name against CurseForge's
 `/api/game/versions`. Ids, never names, are what the upload API accepts, so the
@@ -38,8 +41,9 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-A tag runs verify, uploads the audited archive, and creates the GitHub release.
-CurseForge holds the file for moderation; it is not public immediately.
+A tag runs verify, then creates the GitHub release from the audited archive, and
+uploads to CurseForge when `CURSEFORGE_PROJECT_ID` is set. CurseForge holds the
+file for moderation; it is not public immediately.
 
 ## What the gate checks
 
@@ -49,5 +53,6 @@ CurseForge holds the file for moderation; it is not public immediately.
 - the archive's top level is exactly `BirdBlocks/` with a TOC directly inside;
 - no secrets, home paths, save data, executables or stray file types.
 
-The publish job never installs anything from the network: it runs the stdlib
-uploader in `tools/cf_release.py` against the archive the verify job built.
+The publish jobs never install anything from the network: they run the stdlib
+uploader in `tools/cf_release.py` against the archive the verify job built, and
+the built-in `gh` CLI for the release asset.

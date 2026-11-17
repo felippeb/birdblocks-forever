@@ -1,12 +1,18 @@
-# Publishes to CurseForge. Runs only on a version tag or by hand.
+# Publishes 0.1.0: a GitHub release on every version tag, CurseForge once the
+# project is configured.
 #
 # Trust boundaries, in order of importance:
-#   * verify  - no secrets, contents:read, one pinned action
-#   * publish - environment-gated, the token lives in one step's env only,
-#               and the code that touches it is our own stdlib script
-# Nothing from the network runs in the publish job: no pip, no third-party
+#   * verify      - no secrets, contents:read, one pinned action
+#   * curseforge  - environment-gated, the token lives in one step's env only,
+#                   and the code that touches it is our own stdlib script
+#   * github-release - the built-in token, contents:write, no third-party code
+# Nothing from the network runs in either publish job: no pip, no third-party
 # action, no shell helper. What ships is built from this commit, audited, then
 # uploaded.
+#
+# The CurseForge job is skipped while CURSEFORGE_PROJECT_ID is unset, so a tag
+# still produces a GitHub release before the CurseForge project exists. Setting
+# that repository variable later needs no workflow change.
 name: release
 
 on:
@@ -47,18 +53,19 @@ jobs:
       version: ${{ inputs.version || '0.0.0-ci' }}
       dry_run: ${{ inputs.dry_run || false }}
 
-  publish:
+  curseforge:
     needs: verify
     if: |
       github.repository == 'felippeb/birdblocks-forever' &&
-      !inputs.dry_run
+      !inputs.dry_run &&
+      vars.CURSEFORGE_PROJECT_ID != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # Repository secret lives on this environment, with required reviewers and
     # a branch/tag policy, so a run has to be approved before the token exists.
     environment: curseforge
     permissions:
-      contents: write # GitHub release asset
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,8 +130,52 @@ jobs:
           fi
           python3 tools/cf_release.py "${args[@]}"
 
-      - name: GitHub release
-        if: github.event_name == 'push'
+  github-release:
+    needs: verify
+    if: |
+      github.repository == 'felippeb/birdblocks-forever' &&
+      github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the release and upload the zip
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve version
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then
+            version="${INPUT_VERSION}"
+          else
+            version="${REF_NAME#v}"
+          fi
+          if [ -z "${version}" ]; then
+            echo "::error::no version: tag the commit, or pass one by hand"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "resolved ${version}"
+
+      - name: Build archive
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: pwsh -NoProfile -NonInteractive -File ./build-zip.ps1 -Version "$VERSION" -OutDir release
+
+      - name: Audit archive
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: python3 tools/audit_zip.py --file "release/BirdBlocks-$VERSION.zip"
+
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.v.outputs.version }}
