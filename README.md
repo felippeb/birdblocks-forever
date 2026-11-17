@@ -115,6 +115,11 @@ python tests\rasterize.py tests\out   # turns them into PNGs
 The mock client (`tests/wow_mock.lua`) records every texture the renderer touches,
 so the screenshots above are the same quad calls the game makes in game.
 
+## Publishing
+
+The tag-driven pipeline (CI, CurseForge upload, GitHub release) is documented in
+[docs/publishing.md](docs/publishing.md).
+
 ## Compatibility
 
 Verified on WoW Forever `1.60.1` / interface `16001`. Uses only APIs already
