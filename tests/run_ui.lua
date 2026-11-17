@@ -256,6 +256,13 @@ Mock.SendKey(UI.frame, "P", false)
 advance(0.1)
 check("resume restarts the theme", BirdBlocks.Sound.playing)
 
+-- The theme is re-armed just before it ends, not after a gap of silence.
+local themed = Mock.CountSounds("theme")
+Mock.time = Mock.time + (BirdBlocksAudio.themeLength - 0.2)
+UI:SyncAudio()
+BirdBlocks.Sound.Tick()
+check("theme loops before it runs out", Mock.CountSounds("theme") > themed)
+
 UI:Close()
 eq("closing pauses the run", UI.engine.phase, "paused")
 UI:Open(false)

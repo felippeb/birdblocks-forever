@@ -217,7 +217,9 @@ function Mock.Reset()
 	GetCurrentKeyBoardFocus = function() return Mock.chatFocus end
 	PlaySoundFile = function(path, channel)
 		Mock.sounds[#Mock.sounds + 1] = { path = path, channel = channel }
-		return true, { path = path }
+		-- A real client returns a sound handle (a userdata) that StopSound can
+		-- take later; a tmpfile is the closest thing in plain Lua.
+		return true, io.tmpfile()
 	end
 	StopSound = function(handle) end
 	SlashCmdList = {}

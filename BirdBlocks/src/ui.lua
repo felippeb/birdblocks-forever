@@ -411,7 +411,7 @@ function UI:SyncAudio()
 	local active = self.shown and e and
 		(e.phase == "falling" or e.phase == "are" or e.phase == "clearing")
 	if active and self.db.music then
-		if not Sound.playing then Sound.StartMusic() end
+		if not Sound.playing and Sound.CanStart() then Sound.StartMusic() end
 	elseif Sound.playing then
 		Sound.StopMusic()
 	end

@@ -46,8 +46,15 @@ function Sound.Init(audio, opts)
 	Sound.sfxEnabled = opts.sfx ~= false
 	Sound.musicEnabled = opts.music ~= false
 	Sound.playing = false
+	Sound.loopable = false
 	Sound.handle = nil
 	Sound.started = 0
+	Sound.lastAttempt = -10
+end
+
+-- A failed start must not be retried every frame; the sync loop asks first.
+function Sound.CanStart()
+	return now() - (Sound.lastAttempt or -10) >= 2
 end
 
 function Sound.Play(name)
@@ -71,14 +78,21 @@ function Sound.StartMusic()
 	local handle = playFile(path, "Music")
 	if handle then
 		Sound.playing = true
-		Sound.handle = type(handle) == "userdata" and handle or nil
+		-- Without a handle we cannot stop or re-arm the file, so play it once
+		-- rather than stacking copies on top of each other.
+		Sound.loopable = type(handle) == "userdata"
+		Sound.handle = Sound.loopable and handle or nil
 		Sound.started = now()
+	else
+		-- Remember the failure so the sync loop backs off instead of retrying
+		-- on every frame.
+		Sound.lastAttempt = now()
 	end
 end
 
 -- Called every rendered frame. Restarts the theme when it reaches the end.
 function Sound.Tick()
-	if not Sound.playing then return end
+	if not Sound.playing or not Sound.loopable then return end
 	local length = (Sound.audio and Sound.audio.themeLength or 0) - 0.35
 	if now() - Sound.started >= length then
 		Sound.StartMusic()
