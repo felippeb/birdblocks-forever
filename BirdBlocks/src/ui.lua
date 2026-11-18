@@ -777,6 +777,7 @@ end
 
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
+loader:RegisterEvent("PLAYER_LOGIN")
 loader:RegisterEvent("PLAYER_REGEN_DISABLED")
 loader:RegisterEvent("PLAYER_REGEN_ENABLED")
 
@@ -786,6 +787,10 @@ loader:SetScript("OnEvent", function(_, event, name)
 		if name ~= ADDON then return end
 		initialized = true
 		UI:Init()
+	elseif event == "PLAYER_LOGIN" then
+		-- FrameXML is fully loaded by now; retry in case GameMenuFrame was not
+		-- available when the addon itself loaded.
+		UI:RegisterMenuHooks()
 	elseif event == "PLAYER_REGEN_DISABLED" then
 		if UI.ready then UI:OnCombat() end
 	elseif event == "PLAYER_REGEN_ENABLED" then
