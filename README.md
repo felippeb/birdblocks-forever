@@ -73,6 +73,15 @@ consumed while it is open, so nothing leaks to the world.
 
 ## Install
 
+### WoWUp
+
+Addons → **Install from URL** → `https://github.com/felippeb/birdblocks-forever`
+
+WoWUp's Forever provider only accepts a release asset whose name ends in
+`-forever.zip`, so the release zip is `BirdBlocks-<version>-forever.zip`.
+
+### Manual
+
 1. Download the latest zip from [Releases](../../releases).
 2. Extract it so that `Interface\AddOns\BirdBlocks\` exists.
 3. Restart the client — new folders are only read at startup.

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 - 2026-11-17
+## 0.2.0-forever - 2026-11-17
 
 The modern update: guideline Tetris in a neon cabinet, with the retro profiles
 kept as options.
