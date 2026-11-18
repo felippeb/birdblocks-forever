@@ -180,6 +180,12 @@ function View:drawCells(cells, ox, oy, cell, color, alpha, tile)
 end
 
 function View:pieceColor(kind)
+	if kind == "G" then
+		-- Prefilled B-Type garbage: steel in the neon cabinet, grey on SNES.
+		if self.profile == "modern" then return { 0.42, 0.48, 0.58 } end
+		if self.profile == "gb" then return { 1, 1, 1 } end
+		return { 0.55, 0.55, 0.60 }
+	end
 	if self.profile == "gb" then return { 1, 1, 1 } end
 	if self.profile == "modern" then return NEON_PIECE[kind] or NEON.ink end
 	return PIECE[kind] or { 1, 1, 1 }
@@ -496,12 +502,20 @@ function View:drawHud(engine, opts)
 		self:label("HOLD", px, 30, 1, NEON.dim)
 		self:drawHold(engine)
 		self:label("LINES", px, 108, 1, NEON.dim)
-		self:label(pad(engine.lines, 3), px, 117, 2, NEON.ink)
+		local lineText, lineScale = pad(engine.lines, 3), 2
+		if engine.goal then
+			lineText = lineText .. "/" .. engine.goal
+			lineScale = 1
+		end
+		self:label(lineText, px, 117, lineScale, NEON.ink)
 		self:label("LEVEL", px, 146, 1, NEON.dim)
 		self:label(pad(engine.level, 2), px, 155, 2, NEON.amber)
 		self:label("NEXT", L.nextBox.x, 30, 1, NEON.dim)
 		self:drawNext(engine, opts)
 		self:label("SPACE DROP  C HOLD", px, 196, 1, NEON.dim)
+		if engine.goal then
+			self:label("BROKEN  GOAL " .. engine.goal, px, 208, 1, NEON.amber)
+		end
 		return
 	end
 
@@ -509,7 +523,7 @@ function View:drawHud(engine, opts)
 		self:label("SCORE", px, 4, 1)
 		self:label(pad(engine.score, 6), px, 12, 1)
 		self:label("LINES", px, 30, 1)
-		self:label(pad(engine.lines, 3), px, 38, 1)
+		self:label(pad(engine.lines, 3) .. (engine.goal and ("/" .. engine.goal) or ""), px, 38, 1)
 		self:label("LEVEL", px, 54, 1)
 		self:label(pad(engine.level, 2), px, 62, 1)
 		self:label("NEXT", px, 76, 1)
@@ -522,7 +536,8 @@ function View:drawHud(engine, opts)
 		self:label("SCORE", px, 88, 1)
 		self:label(pad(engine.score, 6), px, 98, 2)
 		self:label("LINES", px, 124, 1)
-		self:label(pad(engine.lines, 3), px, 134, 2)
+		self:label(pad(engine.lines, 3) .. (engine.goal and ("/" .. engine.goal) or ""), px, 134,
+			engine.goal and 1 or 2)
 		self:label("HI", px, 160, 1)
 		self:label(pad(hi, 6), px, 170, 2)
 		self:label("LEVEL", px, 196, 1)
@@ -571,9 +586,10 @@ function View:drawTitle(engine, opts)
 		if opts.blink ~= false then
 			r:textCentered("PRESS ENTER", L.w / 2, 172, 2, NEON.amber[1], NEON.amber[2], NEON.amber[3], 1)
 		end
-		r:textCentered("LEVEL " .. pad(opts.startLevel or 0, 1) .. "   ARROWS MOVE  UP ROTATE", L.w / 2, 196, 1,
-			NEON.dim[1], NEON.dim[2], NEON.dim[3], 1)
-		r:textCentered("SPACE DROP   C HOLD   P PAUSE   M MUSIC", L.w / 2, 208, 1,
+		r:textCentered("SPEED " .. pad(opts.speed or 5, 2) .. "  " ..
+			(opts.broken and "BROKEN" or "NORMAL") .. "   ARROWS MOVE  UP ROTATE",
+			L.w / 2, 196, 1, NEON.dim[1], NEON.dim[2], NEON.dim[3], 1)
+		r:textCentered("SPACE DROP  C HOLD  B MODE  P PAUSE  M MUSIC", L.w / 2, 208, 1,
 			NEON.dim[1], NEON.dim[2], NEON.dim[3], 1)
 		return
 	end
@@ -588,7 +604,8 @@ function View:drawTitle(engine, opts)
 		if opts.blink ~= false then
 			r:textCentered("PRESS ENTER", L.w / 2, 116, 1, GB.darkest[1], GB.darkest[2], GB.darkest[3], 1)
 		end
-		r:textCentered("LEVEL " .. pad(opts.startLevel or 0, 1), L.w / 2, 130, 1, GB.darkest[1], GB.darkest[2], GB.darkest[3], 1)
+		r:textCentered("SPEED " .. tostring(opts.speed or 5) ..
+			(opts.broken and "  BROKEN" or ""), L.w / 2, 130, 1, GB.darkest[1], GB.darkest[2], GB.darkest[3], 1)
 	else
 		r:rect(0, 0, L.w, L.h, SNES.backdrop[1], SNES.backdrop[2], SNES.backdrop[3], 1)
 		r:textCentered("HI " .. pad(opts.highScore or 0, 6), L.w / 2, 8, 1, SNES.grey[1], SNES.grey[2], SNES.grey[3], 1)
@@ -598,7 +615,8 @@ function View:drawTitle(engine, opts)
 		if opts.blink ~= false then
 			r:textCentered("PRESS ENTER", L.w / 2, 178, 2, SNES.white[1], SNES.white[2], SNES.white[3], 1)
 		end
-		r:textCentered("LEVEL " .. pad(opts.startLevel or 0, 1), L.w / 2, 206, 1, SNES.grey[1], SNES.grey[2], SNES.grey[3], 1)
+		r:textCentered("SPEED " .. tostring(opts.speed or 5) ..
+			(opts.broken and "  BROKEN" or ""), L.w / 2, 206, 1, SNES.grey[1], SNES.grey[2], SNES.grey[3], 1)
 	end
 end
 

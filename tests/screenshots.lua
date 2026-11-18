@@ -128,7 +128,7 @@ end
 local function play(name, profile, nice, score, lines, level, piece, hold)
 	UI:SetProfile(profile)
 	local e = UI.engine
-	e:start(0)
+	e:start(level)
 	e.areTimer = 1
 	e:step() -- ARE -> spawn
 	paint(e, nice)
@@ -144,8 +144,19 @@ end
 
 -- Modern neon cabinet. The default profile, so it leads.
 title("modern_title", "modern", 0.2)
-local m = play("modern_game", "modern", NICE_MODERN, 4850, 12, 1,
+local m = play("modern_game", "modern", NICE_MODERN, 4850, 12, 5,
 	{ type = "I", x = 3, y = 2, rot = 0 }, "J")
+
+-- B-Type start: random garbage, 25-line goal.
+UI:SetProfile("modern")
+local b = UI.engine
+b:start(5, { garbage = 0.5, goal = 25 })
+b.areTimer = 1
+b:step()
+b.score, b.lines, b.level = 2480, 9, 5
+b.piece = { type = "T", x = 3, y = 2, rot = 0 }
+b.holdType, b.canHold = "I", false
+frame("modern_broken")
 
 m:togglePause()
 frame("modern_pause")

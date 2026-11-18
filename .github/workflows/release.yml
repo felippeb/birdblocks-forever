@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version label, e.g. 0.2.0-forever (ignored on a tag push)"
+        description: "Version label, e.g. 0.3.0-forever (ignored on a tag push)"
         required: false
         default: ""
       release_type:

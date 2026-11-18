@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0-forever - 2026-11-18
+
+The speed, B-Type and menu update.
+
+### Game
+
+- **Speed setting, default 5.** The old starting-level setting existed but
+  defaulted to 0, which is why the modern game crawled. Speed 5 starts at level
+  5 (16 frames per row on Modern instead of 60). `/blocks speed 1..10`, or use
+  ← → on the title screen. `/blocks level` remains as an alias.
+- **Broken mode** (B-Type): `/blocks broken`, or **B** on the title screen. The
+  well starts with random garbage rows up to 60% of the field and the run ends
+  after 25 lines. `/blocks normal` returns to a clean board. Broken high scores
+  are tracked separately.
+- The engine gained prefilled-garbage starts, per-run line goals and a win
+  state, for all three profiles.
+
+### Client integration
+
+- **Escape is no longer captured.** It opens the client's game menu, and the
+  run pauses/resumes with the menu through a `GameMenuFrame` hook. The cabinet
+  now sits at `HIGH` strata so menus and dialogs draw above it instead of being
+  covered by it.
+- **P** is the dedicated pause key.
+- The title screen shows the selected speed and mode; the modern HUD shows the
+  broken-mode line goal.
+
+### Tooling
+
+- 158 engine assertions and 106 addon assertions, plus the 20,000-frame stress
+  run. New coverage for speed 5 gravity, garbage layout, line goals and the
+  menu hook.
+- Screenshot set regenerated, with a broken-mode example.
+
 ## 0.2.0-forever - 2026-11-17
 
 The modern update: guideline Tetris in a neon cabinet, with the retro profiles

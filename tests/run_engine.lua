@@ -523,6 +523,73 @@ do
 	eq("T-spin clears the line", e.lines, 1)
 end
 
+--------------------------------------------------------------------------- speed / broken mode
+
+do
+	-- Speed 5 means starting at level 5: 16 frames per row, not 60.
+	local e = Engine.new("modern", lcg(7))
+	e:start(5)
+	e:step() -- ARE -> spawn
+	eq("speed 5 starts at level 5", e.level, 5)
+	local y = e.piece.y
+	for _ = 1, 15 do e:step() end
+	eq("speed 5 holds for 15 frames", e.piece.y, y)
+	e:step()
+	eq("speed 5 drops on frame 16", e.piece.y, y + 1)
+end
+
+do
+	-- B-Type garbage: roughly the requested share of the well, never a full
+	-- row, and always headroom for the first piece.
+	local e = Engine.new("modern", lcg(5))
+	e:start(5, { garbage = 0.6, goal = 25 })
+	eq("broken run", e.mode, "broken")
+	eq("broken goal", e.goal, 25)
+
+	local rows, full = 0, 0
+	for y = 0, e.rows - 1 do
+		local blocks = 0
+		for x = 0, e.cols - 1 do
+			if e.board[y][x] == "G" then blocks = blocks + 1 end
+		end
+		if blocks > 0 then
+			rows = rows + 1
+			if blocks == e.cols then full = full + 1 end
+		end
+	end
+	eq("garbage fills 60% of the well", rows, math.floor(e.rows * 0.6))
+	eq("garbage rows are never complete", full, 0)
+	check("garbage leaves the spawn area clear", e.board[0][0] == false and e.board[1][9] == false)
+
+	local gb = Engine.new("gb", lcg(8))
+	gb:start(5, { garbage = 0.3 })
+	eq("broken works on game boy too", gb.mode, "broken")
+	eq("game boy goal defaults to none when omitted", gb.goal, nil)
+end
+
+do
+	-- Reaching the line goal ends the run after the clear animation.
+	local e = Engine.new("modern", lcg(3))
+	e:start(0, { garbage = 0, goal = 1 })
+	e:step() -- ARE -> spawn
+	forcePiece(e, "I", 3, 18, 0)
+	for x = 0, 2 do e.board[19][x] = "J" end
+	for x = 7, 9 do e.board[19][x] = "J" end
+	e:lock()
+	eq("goal line is counted", e.lines, 1)
+	eq("clear animation plays first", e.phase, "clearing")
+	for _ = 1, 40 do
+		if e.phase == "win" then break end
+		e:step()
+	end
+	eq("goal ends in a win", e.phase, "win")
+	local won = false
+	for _, ev in ipairs(e:drain()) do
+		if ev.type == "win" then won = true end
+	end
+	check("win event is emitted", won)
+end
+
 --------------------------------------------------------------------------- report
 
 print(string.format("%d passed, %d failed", passed, failed))

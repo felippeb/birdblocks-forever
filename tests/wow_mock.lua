@@ -152,6 +152,17 @@ end
 
 function Frame:SetScript(name, fn) self.scripts[name] = fn end
 function Frame:GetScript(name) return self.scripts[name] end
+function Frame:HookScript(name, fn)
+	local previous = self.scripts[name]
+	if previous then
+		self.scripts[name] = function(...)
+			previous(...)
+			fn(...)
+		end
+	else
+		self.scripts[name] = fn
+	end
+end
 
 function Frame:CreateTexture(name, layer)
 	local t = setmetatable({ id = id("tex"), owner = self, layer = layer or "ARTWORK", shown = false }, Texture)
@@ -208,9 +219,12 @@ function Mock.Reset()
 
 	Mock.UIParent = Mock.CreateFrame("Frame", "UIParent", nil)
 	Mock.UIParent.w, Mock.UIParent.h = 1920, 1080
+	Mock.GameMenuFrame = Mock.CreateFrame("Frame", "GameMenuFrame", Mock.UIParent)
+	Mock.GameMenuFrame.shown = false
 
 	CreateFrame = Mock.CreateFrame
 	UIParent = Mock.UIParent
+	GameMenuFrame = Mock.GameMenuFrame
 	GetTime = function() return Mock.time end
 	UnitOnTaxi = function() return Mock.taxi end
 	InCombatLockdown = function() return Mock.combat end

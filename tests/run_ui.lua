@@ -48,6 +48,8 @@ end
 check("initialised", UI._initialized())
 check("window starts hidden", not UI:IsShown())
 eq("default profile", UI.db.profile, "modern")
+eq("default speed", UI.db.speed, 5)
+eq("normal mode by default", UI.db.mode, "normal")
 eq("auto-open on by default", UI.db.autoOpen, true)
 eq("saved variables written", type(BirdBlocksDB), "table")
 check("engine exists", UI.engine ~= nil)
@@ -69,21 +71,21 @@ check("enter starts a game", UI.engine.phase == "falling" or UI.engine.phase == 
 check("start jingle plays", Mock.CountSounds("start") >= 1)
 check("music starts with the game", Mock.CountSounds("theme") >= 1)
 
--- level select on the title
+-- speed select on the title
 UI:Close()
 UI:Open(false)
 UI.engine.phase = "title"
 Mock.SendKey(UI.frame, "RIGHT", true)
 Mock.SendKey(UI.frame, "RIGHT", false)
-eq("right raises start level", UI.db.startLevel, 1)
+eq("right raises speed", UI.db.speed, 6)
 Mock.SendKey(UI.frame, "LEFT", true)
 Mock.SendKey(UI.frame, "LEFT", false)
-eq("left lowers start level", UI.db.startLevel, 0)
+eq("left lowers speed", UI.db.speed, 5)
 
--- key repeat is ignored, so holding right does not race the level selector
+-- key repeat is ignored, so holding right does not race the speed selector
 Mock.SendKey(UI.frame, "RIGHT", true)
 Mock.SendKey(UI.frame, "RIGHT", true)
-eq("held key is not repeated", UI.db.startLevel, 1)
+eq("held key is not repeated", UI.db.speed, 6)
 Mock.SendKey(UI.frame, "RIGHT", false)
 
 --------------------------------------------------------------------------- play + pause
@@ -111,13 +113,25 @@ Mock.SendKey(UI.frame, "P", true)
 Mock.SendKey(UI.frame, "P", false)
 eq("P resumes", e.phase, "falling")
 
--- escape pauses while playing, escape again closes
+-- Escape belongs to the client: it is never swallowed, and the game menu
+-- pauses the run while it is open.
 Mock.SendKey(UI.frame, "ESCAPE", true)
 Mock.SendKey(UI.frame, "ESCAPE", false)
-eq("escape pauses", e.phase, "paused")
-Mock.SendKey(UI.frame, "ESCAPE", true)
-Mock.SendKey(UI.frame, "ESCAPE", false)
-check("escape closes when paused", not UI:IsShown())
+eq("escape leaves the game running", e.phase, "falling")
+eq("escape propagates to the client", UI.frame.propagate, true)
+check("window stays open under escape", UI:IsShown())
+
+GameMenuFrame:Show()
+eq("the game menu pauses the run", e.phase, "paused")
+check("the menu takes the keyboard", UI.frame.keyboard == false)
+GameMenuFrame:Hide()
+eq("closing the menu resumes the run", e.phase, "falling")
+check("the keyboard comes back", UI.frame.keyboard == true)
+
+Mock.SendKey(UI.frame, "P", true)
+Mock.SendKey(UI.frame, "P", false)
+eq("P pauses", e.phase, "paused")
+UI:Close()
 check("keyboard released on close", UI.frame.keyboard == false)
 check("music stopped on close", BirdBlocks.Sound.playing == false)
 
@@ -223,8 +237,10 @@ eq("render scale applied", UI.render:getScale(), 6)
 SlashCmdList["BIRDBLOCKS"]("zoom 0")
 check("auto zoom", UI.render:getScale() >= 2)
 
+SlashCmdList["BIRDBLOCKS"]("speed 7")
+eq("speed setting", UI.db.speed, 7)
 SlashCmdList["BIRDBLOCKS"]("level 5")
-eq("start level", UI.db.startLevel, 5)
+eq("level is a speed alias", UI.db.speed, 5)
 SlashCmdList["BIRDBLOCKS"]("reset")
 eq("high scores cleared", next(UI.db.hi), nil)
 
@@ -241,6 +257,7 @@ local me = UI.engine
 me.areTimer = 1
 me:step()
 eq("modern is the default engine", me.profile.id, "modern")
+eq("modern starts at speed 5", me.level, 5)
 
 -- Space is a hard drop: the piece locks at once and scores two per row.
 me.piece.type, me.piece.x, me.piece.y, me.piece.rot = "T", 3, 0, 0
@@ -283,6 +300,36 @@ UI.engine.phase = "over"
 Mock.SendKey(UI.frame, "SPACE", true)
 Mock.SendKey(UI.frame, "SPACE", false)
 check("space restarts after game over", UI.engine.phase ~= "over", UI.engine.phase)
+UI:Close()
+
+--------------------------------------------------------------------------- broken mode
+
+UI:Open(false)
+UI.engine.phase = "title"
+Mock.SendKey(UI.frame, "B", true)
+Mock.SendKey(UI.frame, "B", false)
+eq("B toggles broken mode on the title", UI.db.mode, "broken")
+UI:StartGame()
+local be = UI.engine
+eq("broken run", be.mode, "broken")
+eq("broken goal", be.goal, 25)
+local garbage = 0
+for y = 0, be.rows - 1 do
+	for x = 0, be.cols - 1 do
+		if be.board[y][x] == "G" then garbage = garbage + 1 end
+	end
+end
+check("broken starts with garbage", garbage > 0)
+check("broken leaves headroom", be.board[0][0] == false)
+be.score = 4321
+UI:RecordScore()
+eq("broken high scores are separate", UI.db.hi["modern:broken"], 4321)
+check("normal high score is untouched", UI.db.hi["modern"] ~= 4321)
+
+SlashCmdList["BIRDBLOCKS"]("normal")
+eq("normal mode selected", UI.db.mode, "normal")
+UI:StartGame()
+eq("normal run starts clean", UI.engine.mode, "normal")
 UI:Close()
 
 --------------------------------------------------------------------------- window geometry

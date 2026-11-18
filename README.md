@@ -27,14 +27,14 @@ Three rulesets share the same engine:
 | --- | --- | --- | --- |
 | Screen | 320×240 neon cabinet | 160×144, four greens | 256×224, colored |
 | Field | 10×20 | 10×18 | 10×20 |
-| Gravity | 60 frames/row at level 0 | 53 frames/row | 48 frames/row |
+| Gravity | 16 frames/row at speed 5 | 33 frames/row at speed 5 | 23 frames/row at speed 5 |
 | DAS / ARR | 10 / 1 frames | 24 / 6 frames | 16 / 6 frames |
 | ARE | 4 frames | 2 frames | 12 frames |
 | Rotation | SRS + wall kicks | left-handed Nintendo | right-handed Nintendo |
 | Extras | hold, ghost, hard drop, lock delay | — | — |
 | Scoring | 100 / 300 / 500 / 800 × (level + 1), T-spins, B2B, combos, perfect clears | 40 / 100 / 300 / 1200 × (level + 1) | same |
 | Randomiser | 7-bag | no immediate repeat | no immediate repeat |
-| Levels | 0–20 | 0–20 | 0–29 |
+| Levels | 1–20 | 1–20 | 1–29 |
 
 Everything advances in **60 Hz frames**. The retro profiles use the real frame
 tables from the originals rather than approximations in seconds; the modern
@@ -42,23 +42,51 @@ profile uses the guideline timings.
 
 ![Game Boy mode](docs/screenshot-gb-game.png)
 
+## Speed
+
+The game starts at **speed 5** — start level 5 — because level 0 is a museum
+piece for anyone who has played Tetris before. Change it from the title screen
+with ← →, or with `/blocks speed 1..10`. It is just the starting level, so the
+score multiplier and level-ups work normally from there. `/blocks level` is kept
+as an alias.
+
+Speed applies to every profile; Game Boy and SNES still use their original
+gravity, DAS and line-clear frame tables for the level you pick.
+
+## Broken mode
+
+The Game Boy's B-Type board, available in every profile: `/blocks broken`
+(or `/blocks problem`, or press **B** on the title screen). The well starts
+prefilled with junk rows up to **60%** of the field, and the run ends when you
+clear **25 lines**. Higher speeds start with a taller mess. `/blocks normal`
+goes back to a clean well.
+
+Broken runs keep their own high scores, so the garbage start does not pollute
+the normal table.
+
+![Broken mode](docs/screenshot-modern-broken.png)
+
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| ← → | Move (DAS then auto-shift) |
+| ← → | Move (DAS then auto-shift); on the title, pick speed |
 | ↓ | Soft drop (+1 per cell) |
 | ↑ / X / W | Rotate clockwise |
 | Z / Ctrl | Rotate counter-clockwise |
 | Space | Hard drop (+2 per cell, modern only) |
 | C / Shift | Hold (modern only) |
+| B | Broken mode on the title screen |
 | Enter | Start, or restart after game over |
-| P / Esc | Pause (Esc closes when already paused) |
+| P | Pause / resume |
+| Esc | Opens the client's game menu; the run pauses behind it |
 | M | Music on/off |
 | Mouse wheel | Zoom |
 
 The window is movable (drag the title bar). Arrow keys and the mouse wheel are
-consumed while it is open, so nothing leaks to the world.
+consumed while it is open, so nothing leaks to the world — except **Esc**, which
+is deliberately left to the client. The cabinet sits at `HIGH` frame strata, so
+the game menu and other dialogs draw above it instead of fighting with it.
 
 ## Taxi behaviour
 
@@ -95,17 +123,19 @@ pipeline and starts uploading as soon as the project id is configured.
 ```text
 /blocks                 open or close
 /blocks modern | gb | snes   pick the version
+/blocks speed N         1..10 starting level, default 5
+/blocks broken | normal B-Type garbage start / clean start
 /blocks auto            auto-open on taxi on/off
 /blocks music | sound   toggle audio
 /blocks zoom N          1..8, 0 = fit the screen
-/blocks level N         starting level 0..9
 /blocks reset           clear high scores
 /blocks help            summary
 ```
 
-`/bb` is a shorter alias. High scores are kept per profile in `BirdBlocksDB`.
-Existing installs adopt the modern profile once on upgrade; an explicit
-`/blocks gb` or `/blocks snes` always wins.
+`/bb` is a shorter alias. `/blocks level N` still works as an alias for speed.
+High scores are kept per profile and per mode in `BirdBlocksDB`. Existing
+installs adopt the modern profile once on upgrade; an explicit `/blocks gb` or
+`/blocks snes` always wins. An old start level is migrated to the same speed.
 
 ## Audio
 
@@ -130,7 +160,7 @@ generator, not the output.
 ### Tests
 
 ```powershell
-lua tests\run_engine.lua      # timings, DAS, SRS kicks, 7-bag, hold, scoring, top-out
+lua tests\run_engine.lua      # timings, DAS, SRS kicks, 7-bag, hold, scoring, garbage, goals
 lua tests\run_ui.lua          # addon against a mock client: taxi, combat, keys, slash
 lua tests\run_stress.lua      # 20,000 randomised frames, invariant-checked
 lua tests\screenshots.lua     # writes draw lists to tests\out

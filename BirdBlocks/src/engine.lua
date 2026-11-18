@@ -10,6 +10,10 @@
 --   snes   - Tetris (NES, Nintendo, 1989): the same rules, different timings
 --   modern - Tetris Guideline: SRS with wall kicks, 7-bag, hold, hard drop,
 --            ghost piece, lock delay and the modern scoring table
+--
+-- On top of any profile, a game can start as "broken": the well is prefilled
+-- with random garbage rows (the B-Type board from the original Game Boy) and
+-- the run ends after a line goal.
 
 local ADDON = ...
 BirdBlocks = BirdBlocks or {}
@@ -258,6 +262,7 @@ function Engine.new(profileID, rng)
 	self.lastAction = nil
 	self.combo, self.b2b = 0, false
 	self.lastClear = 0
+	self.goal, self.mode = nil, "normal"
 	return self
 end
 
@@ -429,8 +434,11 @@ end
 
 --------------------------------------------------------------------------- lifecycle
 
-function Engine:start(level)
-	self.startLevel = max(0, min(9, level or 0))
+-- opts.garbage  fraction of the well to prefill (0..1), B-Type style
+-- opts.goal     lines to clear for a win; nil means endless
+function Engine:start(level, opts)
+	opts = opts or {}
+	self.startLevel = max(0, min(10, level or 0))
 	self.level = self.startLevel
 	self.score, self.lines = 0, 0
 	self.clearRows = {}
@@ -447,10 +455,44 @@ function Engine:start(level)
 	self.lastAction = nil
 	self.combo, self.b2b = 0, false
 	self.lastClear = 0
+	self.goal = opts.goal
+	self.mode = (opts.garbage and opts.garbage > 0) and "broken" or "normal"
+	if self.mode == "broken" then self:fillGarbage(opts.garbage) end
 	self:refillQueue()
 	self.phase = "are"
 	self.areTimer = 1
 	self.topOut = false
+end
+
+-- B-Type start: full rows with random holes, up to the requested share of the
+-- well. Rows never come out complete, so nothing clears for free, and the top
+-- of the field stays open for the first pieces.
+function Engine:fillGarbage(fraction)
+	local count = floor(self.rows * max(0, min(1, fraction or 0)))
+	if count < 1 then return end
+	count = min(count, self.rows - 2)
+	local previous = nil
+	for i = 0, count - 1 do
+		local row = self.board[self.rows - 1 - i]
+		for x = 0, self.cols - 1 do row[x] = "G" end
+		local hole
+		repeat
+			hole = self.rng(1, self.cols) - 1
+		until hole ~= previous or self.cols < 3
+		row[hole] = false
+		if self.rng(1, 4) == 1 then
+			local second
+			repeat second = self.rng(1, self.cols) - 1 until second ~= hole
+			row[second] = false
+		end
+		previous = hole
+	end
+end
+
+function Engine:win()
+	self.phase = "win"
+	self.piece = nil
+	self:emit({ type = "win", score = self.score, lines = self.lines })
 end
 
 function Engine:spawn(kind)
@@ -881,6 +923,10 @@ function Engine:step()
 		self.clearTimer = self.clearTimer - 1
 		if self.clearTimer <= 0 then
 			self:removeLines()
+			if self.goal and self.lines >= self.goal then
+				self:win()
+				return
+			end
 			self.phase = "are"
 			self.areTimer = self.profile.are
 		end

@@ -21,7 +21,8 @@ local DEFAULTS = {
 	sound = true,
 	music = true,
 	autoOpen = true,
-	startLevel = 0,
+	speed = 5,         -- 1..10, starting level; 5 is the experienced default
+	mode = "normal",   -- "normal" or "broken" (B-Type garbage start)
 	hi = {},
 	games = 0,
 	pos = nil,
@@ -41,13 +42,28 @@ local KEYMAP = {
 	C = "hold", LSHIFT = "hold", RSHIFT = "hold",
 	P = "pause", PAUSE = "pause",
 	SPACE = "harddrop", ENTER = "start",
+	B = "broken",
 	M = "music",
 	MINUS = "zoomout", NUMPADMINUS = "zoomout",
 	EQUALS = "zoomin", PLUS = "zoomin", NUMPADPLUS = "zoomin",
 }
 
-local function clampLevel(n)
-	return max(0, min(9, n))
+local function clampSpeed(n)
+	return max(1, min(10, n or 5))
+end
+
+function UI:Speed()
+	return clampSpeed(tonumber(self.db.speed) or DEFAULTS.speed)
+end
+
+function UI:Broken()
+	return self.db.mode == "broken"
+end
+
+function UI:ToggleBroken()
+	self.db.mode = self:Broken() and "normal" or "broken"
+	self:Print(self:Broken() and "broken mode (garbage start, 25-line goal)" or "normal mode")
+	if self:IsShown() then self:Draw() end
 end
 
 function UI:Print(msg)
@@ -61,6 +77,12 @@ end
 function UI:Init()
 	BirdBlocksDB = BirdBlocksDB or {}
 	self.db = BirdBlocksDB
+	-- 0.3 replaced the old level setting (which defaulted to 0) with speed
+	-- 1..10. Anyone who had picked a level keeps it; everyone else gets 5.
+	if self.db.speed == nil then
+		local old = tonumber(self.db.startLevel)
+		self.db.speed = (old and old > 0) and clampSpeed(old) or DEFAULTS.speed
+	end
 	for k, v in pairs(DEFAULTS) do
 		if self.db[k] == nil then
 			if type(v) == "table" then
@@ -70,6 +92,8 @@ function UI:Init()
 			end
 		end
 	end
+	self.db.speed = clampSpeed(self.db.speed)
+	if self.db.mode ~= "broken" then self.db.mode = "normal" end
 	self.db.hi = self.db.hi or {}
 	if not View.LAYOUT[self.db.profile] then self.db.profile = "modern" end
 	-- 0.2 made the modern ruleset the default. Players upgrading from 0.1
@@ -100,7 +124,9 @@ end
 function UI:CreateFrame()
 	if self.frame then return end
 	local f = CreateFrame("Frame", "BirdBlocksFrame", UIParent)
-	f:SetFrameStrata("DIALOG")
+	-- HIGH, not DIALOG: the game menu and other client dialogs must be able to
+	-- draw above the cabinet instead of being buried by it.
+	f:SetFrameStrata("HIGH")
 	f:SetToplevel(true)
 	f:SetClampedToScreen(true)
 	f:SetMovable(true)
@@ -129,7 +155,7 @@ function UI:CreateFrame()
 
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	title:SetPoint("LEFT", bar, "LEFT", 8, 0)
-	title:SetText("|cff9bbc0fBIRD BLOCKS|r  |cff777777arrows move, space drop, c hold, esc pause, m music, wheel zoom|r")
+	title:SetText("|cff9bbc0fBIRD BLOCKS|r  |cff777777arrows move, space drop, c hold, p pause, esc menu, wheel zoom|r")
 	self.titleText = title
 
 	local close = CreateFrame("Button", nil, bar, "UIPanelCloseButton")
@@ -162,6 +188,51 @@ function UI:CreateFrame()
 	f:SetScript("OnKeyUp", function(_, key) UI:OnKeyUp(key) end)
 	f:SetScript("OnMouseWheel", function(_, delta) UI:Zoom(delta) end)
 	if f.SetPropagateKeyboardInput then f:SetPropagateKeyboardInput(false) end
+	UI:RegisterMenuHooks()
+end
+
+-- The client's game menu (ESC) must win over the cabinet: while it is open the
+-- addon stops capturing keys and pauses the run, then resumes when it closes.
+-- Hooking the real frame means /reload, addon conflicts and Escape all agree.
+function UI:RegisterMenuHooks()
+	if self.menuHooked then return end
+	if not GameMenuFrame or not GameMenuFrame.HookScript then return end
+	self.menuHooked = true
+	GameMenuFrame:HookScript("OnShow", function()
+		UI:OnGameMenu(true)
+	end)
+	GameMenuFrame:HookScript("OnHide", function()
+		UI:OnGameMenu(false)
+	end)
+end
+
+function UI:OnGameMenu(open)
+	if not self.ready then return end
+	if open then
+		if self.menuOpen then return end
+		self.menuOpen = true
+		self.menuPaused = false
+		if not self.shown then return end
+		-- Release ESC and every other key to the menu.
+		if self.frame then self.frame:EnableKeyboard(false) end
+		local e = self.engine
+		if e and (e.phase == "falling" or e.phase == "are" or e.phase == "clearing") then
+			e:togglePause()
+			self.menuPaused = true
+			self:Draw()
+		end
+	else
+		if not self.menuOpen then return end
+		self.menuOpen = false
+		if not self.shown then return end
+		if self.frame then self.frame:EnableKeyboard(true) end
+		local e = self.engine
+		if self.menuPaused and e and e.phase == "paused" then
+			e:togglePause()
+		end
+		self.menuPaused = false
+		self:Draw()
+	end
 end
 
 function UI:SetProfile(id, initial)
@@ -174,9 +245,6 @@ function UI:SetProfile(id, initial)
 	if self.render then self.render.ox, self.render.oy = 0, 0 end
 	self.engine = Engine.new(id)
 	self.engine.phase = "title"
-	if initial then
-		self.db.startLevel = clampLevel(self.db.startLevel or 0)
-	end
 	self:ApplyScale()
 	self:ApplyTheme()
 	if self.shown then self:Draw() end
@@ -266,7 +334,9 @@ function UI:Open(auto)
 		self.rideOpened = true
 	end
 	self.frame:Show()
-	self.frame:EnableKeyboard(true)
+	-- While a client menu is up the menu owns the keyboard; reopening behind
+	-- it must not steal Escape back.
+	self.frame:EnableKeyboard(not self.menuOpen)
 	-- Reopening always resumes a paused game: otherwise landing and taking
 	-- off again would greet the player with a PAUSE box.
 	if self.engine.phase == "paused" then
@@ -299,7 +369,15 @@ end
 
 function UI:StartGame()
 	if not self.engine then return end
-	self.engine:start(self.db.startLevel)
+	local level = self:Speed()
+	local opts
+	if self:Broken() then
+		-- Random B-Type mess, never more than 60% of the well, with the Game
+		-- Boy's 25-line goal. Faster speeds start with a taller stack.
+		local fraction = min(0.60, 0.25 + level * 0.035 + math.random() * 0.10)
+		opts = { garbage = fraction, goal = 25 }
+	end
+	self.engine:start(level, opts)
 	if self.screen then self.screen:resetFx() end
 	if self.render then self.render.ox, self.render.oy = 0, 0 end
 	Sound.Play("start")
@@ -309,9 +387,10 @@ end
 function UI:RecordScore()
 	local e = self.engine
 	if not e then return end
-	local hi = self.db.hi[e.profile.id] or 0
+	local key = e.profile.id .. (e.mode == "broken" and ":broken" or "")
+	local hi = self.db.hi[key] or 0
 	if e.score > hi then
-		self.db.hi[e.profile.id] = e.score
+		self.db.hi[key] = e.score
 		self:Print(string.format("new high score: %d", e.score))
 	end
 	self.db.games = (self.db.games or 0) + 1
@@ -332,12 +411,10 @@ function UI:OnKeyDown(key)
 	if not e then return end
 
 	if key == "ESCAPE" then
-		if e.phase == "falling" or e.phase == "are" or e.phase == "clearing" then
-			e:togglePause()
-			Sound.Play("pause")
-			self:Draw()
-		else
-			self:Close()
+		-- Never eat Escape: let the client open (and close) its game menu. The
+		-- GameMenuFrame hook pauses the run while the menu is up.
+		if self.frame and self.frame.SetPropagateKeyboardInput then
+			self.frame:SetPropagateKeyboardInput(true)
 		end
 		return
 	end
@@ -360,11 +437,13 @@ function UI:OnKeyDown(key)
 
 	if e.phase == "title" then
 		if action == "left" then
-			self.db.startLevel = clampLevel((self.db.startLevel or 0) - 1)
+			self.db.speed = clampSpeed(self:Speed() - 1)
 			self:Draw()
 		elseif action == "right" then
-			self.db.startLevel = clampLevel((self.db.startLevel or 0) + 1)
+			self.db.speed = clampSpeed(self:Speed() + 1)
 			self:Draw()
+		elseif action == "broken" then
+			self:ToggleBroken()
 		elseif action == "start" or action == "harddrop" then
 			self:StartGame()
 			self:Draw()
@@ -372,7 +451,7 @@ function UI:OnKeyDown(key)
 		return
 	end
 
-	if e.phase == "over" then
+	if e.phase == "over" or e.phase == "win" then
 		if action == "start" or action == "harddrop" then
 			self:StartGame()
 			self:Draw()
@@ -437,6 +516,12 @@ end
 
 function UI:OnUpdate(elapsed)
 	if not self.shown then return end
+	-- A client menu freezes the run even if the taxi opened the window behind
+	-- it; the menu hook resumes/returns control when it closes.
+	if self.menuOpen then
+		Sound.StopMusic()
+		return
+	end
 	self:SyncAudio()
 	if elapsed > 0.25 then elapsed = 0.25 end
 	if self.screen and self.screen.updateFx then self.screen:updateFx(elapsed) end
@@ -457,7 +542,7 @@ end
 function UI:Tick()
 	local e = self.engine
 	if not e then return end
-	if e.phase == "title" or e.phase == "over" then return end
+	if e.phase == "title" or e.phase == "over" or e.phase == "win" then return end
 	if e.phase ~= "paused" then e:step() end
 	for _, ev in ipairs(e:drain()) do
 		if ev.type == "move" then
@@ -480,6 +565,9 @@ function UI:Tick()
 		elseif ev.type == "over" then
 			Sound.Play("over")
 			self:RecordScore()
+		elseif ev.type == "win" then
+			Sound.Play("tetris")
+			self:RecordScore()
 		end
 	end
 end
@@ -493,7 +581,8 @@ function UI:Draw()
 	if not self.render or not self.engine then return end
 	local r = self.render
 	local e = self.engine
-	local hi = self.db.hi[e.profile.id] or 0
+	local hiKey = e.profile.id .. ((e.phase == "title" and self:Broken() or e.mode == "broken") and ":broken" or "")
+	local hi = self.db.hi[hiKey] or 0
 	local fx = self.screen and self.screen.fx
 
 	-- Screen shake: offsets every quad by a pixel or two. Deterministic so
@@ -511,7 +600,8 @@ function UI:Draw()
 		self.screen:drawTitle(e, {
 			frame = floor((GetTime and GetTime() or 0) * 60),
 			highScore = hi,
-			startLevel = self.db.startLevel,
+			speed = self:Speed(),
+			broken = self:Broken(),
 			blink = self:Blink(),
 		})
 	else
@@ -525,12 +615,19 @@ function UI:Draw()
 			flashOff = flashOff,
 		})
 		if e.phase == "paused" then
-			self.screen:drawBox({ { "PAUSE", 2 }, { "P TO RESUME", 1 } })
+			self.screen:drawBox({ { "PAUSE", 2 }, { "P RESUME   ESC MENU", 1 } })
 		elseif e.phase == "over" then
 			self.screen:drawBox({
 				{ "GAME OVER", 2 },
 				{ "SCORE " .. View.pad(e.score, 6), 1 },
 				{ e.profile.modern and "PRESS ENTER OR SPACE" or "PRESS ENTER", 1 },
+			})
+		elseif e.phase == "win" then
+			self.screen:drawBox({
+				{ "CLEAR!", 2 },
+				{ "GOAL " .. tostring(e.goal) .. " LINES", 1 },
+				{ "SCORE " .. View.pad(e.score, 6), 1 },
+				{ "PRESS ENTER OR SPACE", 1 },
 			})
 		end
 	end
@@ -625,22 +722,40 @@ function UI:RegisterSlash()
 			else
 				self:Print("zoom: " .. self:CurrentScale() .. " (use /blocks zoom 4)")
 			end
-		elseif cmd == "level" then
+		elseif cmd == "speed" then
 			local n = tonumber(rest)
 			if n then
-				self.db.startLevel = clampLevel(floor(n))
-				self:Print("start level " .. self.db.startLevel)
+				self.db.speed = clampSpeed(floor(n))
+				self:Print("speed " .. self.db.speed .. " (starting level " .. self.db.speed .. ")")
+			else
+				self:Print("speed: " .. self:Speed() .. " (use /blocks speed 1..10)")
 			end
+		elseif cmd == "level" then
+			-- kept as an alias for the old name; speed 1..10 is the same knob
+			local n = tonumber(rest)
+			if n then
+				self.db.speed = clampSpeed(floor(n))
+				self:Print("speed " .. self.db.speed)
+			end
+		elseif cmd == "broken" or cmd == "problem" or cmd == "btype" or cmd == "mess" then
+			self.db.mode = "broken"
+			self:Print("broken mode (random start, clear 25 lines)")
+			if self.shown then self:Draw() end
+		elseif cmd == "normal" or cmd == "atype" then
+			self.db.mode = "normal"
+			self:Print("normal mode")
+			if self.shown then self:Draw() end
 		elseif cmd == "reset" then
 			self.db.hi = {}
 			self:Print("high scores cleared")
 		elseif cmd == "help" then
 			self:Print("/blocks - open or close")
 			self:Print("/blocks modern|gb|snes - pick the version")
+			self:Print("/blocks speed N - 1..10, default 5")
+			self:Print("/blocks broken|normal - garbage start / clean start")
 			self:Print("/blocks auto - auto-open on taxi")
 			self:Print("/blocks music|sound - toggle audio")
 			self:Print("/blocks zoom N - 1..8, 0 = fit screen")
-			self:Print("/blocks level N - starting level 0..9")
 			self:Print("/blocks reset - clear high scores")
 		else
 			self:Print("unknown option; try /blocks help")

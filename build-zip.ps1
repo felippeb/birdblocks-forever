@@ -9,11 +9,11 @@
 
 .EXAMPLE
     pwsh -File .\build-zip.ps1
-    pwsh -File .\build-zip.ps1 -Version 0.2.0
+    pwsh -File .\build-zip.ps1 -Version 0.3.0-forever
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = "0.2.0-forever",
+    [string]$Version = "0.3.0-forever",
     [string]$OutDir = (Join-Path $PSScriptRoot "release")
 )
 
