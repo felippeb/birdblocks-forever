@@ -85,8 +85,9 @@ the normal table.
 
 The window is movable (drag the title bar). Arrow keys and the mouse wheel are
 consumed while it is open, so nothing leaks to the world — except **Esc**, which
-is deliberately left to the client. The cabinet sits at `HIGH` frame strata, so
-the game menu and other dialogs draw above it instead of fighting with it.
+is deliberately left to the client. The cabinet sits at `HIGH` frame strata and
+hides itself while the game menu is open, so menus and dialogs are never covered
+by it.
 
 ## Taxi behaviour
 

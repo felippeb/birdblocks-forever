@@ -221,11 +221,17 @@ function UI:OnGameMenu(open)
 			self.menuPaused = true
 			self:Draw()
 		end
+		-- Hide the cabinet outright: no strata guesswork, the menu owns the
+		-- screen while it is up.
+		if self.frame then self.frame:Hide() end
 	else
 		if not self.menuOpen then return end
 		self.menuOpen = false
 		if not self.shown then return end
-		if self.frame then self.frame:EnableKeyboard(true) end
+		if self.frame then
+			self.frame:Show()
+			self.frame:EnableKeyboard(true)
+		end
 		local e = self.engine
 		if self.menuPaused and e and e.phase == "paused" then
 			e:togglePause()
@@ -323,6 +329,7 @@ end
 
 function UI:Open(auto)
 	if not self.ready then return end
+	if self.menuOpen then return end
 	if self.shown then return end
 	self.shown = true
 	self.autoOpened = auto and true or false

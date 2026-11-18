@@ -29,7 +29,7 @@ The speed, B-Type and menu update.
 
 ### Tooling
 
-- 158 engine assertions and 106 addon assertions, plus the 20,000-frame stress
+- 158 engine assertions and 108 addon assertions, plus the 20,000-frame stress
   run. New coverage for speed 5 gravity, garbage layout, line goals and the
   menu hook.
 - Screenshot set regenerated, with a broken-mode example.
