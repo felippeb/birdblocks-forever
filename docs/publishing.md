@@ -28,21 +28,21 @@ script refuses to guess when a name matches more than one version.
 
 ```powershell
 # local dry run: builds, audits and prints metadata, contacts nothing
-pwsh -File .\build-zip.ps1 -Version 0.3.0-forever
-python tools\audit_zip.py --file release\BirdBlocks-0.3.0-forever.zip
-python tools\cf_release.py --file release\BirdBlocks-0.3.0-forever.zip --version 0.3.0-forever --dry-run
+pwsh -File .\build-zip.ps1 -Version 0.3.1-forever
+python tools\audit_zip.py --file release\BirdBlocks-0.3.1-forever.zip
+python tools\cf_release.py --file release\BirdBlocks-0.3.1-forever.zip --version 0.3.1-forever --dry-run
 ```
 
 Keep the `-forever` suffix in the version label. WoWUp's Forever provider only
 matches release assets named `*-forever.zip` (or `*-camelot.zip`), so
-`BirdBlocks-0.3.0-forever.zip` installs and `BirdBlocks-0.3.0.zip` does not.
+`BirdBlocks-0.3.1-forever.zip` installs and `BirdBlocks-0.3.1.zip` does not.
 
 Then either run **release** from the Actions tab (pick `alpha`/`beta`/`release`,
 optionally `dry_run`) or push a tag:
 
 ```powershell
-git tag v0.3.0-forever
-git push origin v0.3.0-forever
+git tag v0.3.1-forever
+git push origin v0.3.1-forever
 ```
 
 A tag runs verify, then creates the GitHub release from the audited archive, and

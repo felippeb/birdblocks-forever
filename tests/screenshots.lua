@@ -125,10 +125,10 @@ local function title(name, profile, time)
 	frame(name)
 end
 
-local function play(name, profile, nice, score, lines, level, piece, hold)
+local function play(name, profile, nice, score, lines, level, piece, hold, opts)
 	UI:SetProfile(profile)
 	local e = UI.engine
-	e:start(level)
+	e:start(level, opts)
 	e.areTimer = 1
 	e:step() -- ARE -> spawn
 	paint(e, nice)
@@ -142,20 +142,20 @@ local function play(name, profile, nice, score, lines, level, piece, hold)
 	return e
 end
 
--- Modern neon cabinet. The default profile, so it leads.
+-- Modern neon cabinet. The default (classic) rules: one piece ahead, no hold.
 title("modern_title", "modern", 0.2)
 local m = play("modern_game", "modern", NICE_MODERN, 4850, 12, 5,
-	{ type = "I", x = 3, y = 2, rot = 0 }, "J")
+	{ type = "I", x = 3, y = 2, rot = 0 }, nil,
+	{ preview = 1, hold = false, mode = "classic" })
 
 -- B-Type start: random garbage, 25-line goal.
 UI:SetProfile("modern")
 local b = UI.engine
-b:start(5, { garbage = 0.5, goal = 25 })
+b:start(5, { garbage = 0.5, goal = 25, preview = 1, hold = false, mode = "broken" })
 b.areTimer = 1
 b:step()
 b.score, b.lines, b.level = 2480, 9, 5
 b.piece = { type = "T", x = 3, y = 2, rot = 0 }
-b.holdType, b.canHold = "I", false
 frame("modern_broken")
 
 m:togglePause()

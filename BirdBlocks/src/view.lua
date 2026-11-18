@@ -421,13 +421,18 @@ function View:drawNext(engine, opts)
 	local cell = L.nextCell
 
 	if self.profile == "modern" then
+		local count = engine:queueSize()
+		-- One piece of preview (classic/B-Type) gets a compact box instead of
+		-- a tall empty one.
+		if count == 1 then
+			box = { x = box.x, y = box.y, w = box.w, h = 56 }
+		end
 		r:rect(box.x, box.y, box.w, box.h, 0, 0, 0, 1)
 		local m = NEON.magenta
 		r:rect(box.x, box.y, box.w, 1, m[1], m[2], m[3], 1)
 		r:rect(box.x, box.y + box.h - 1, box.w, 1, m[1], m[2], m[3], 1)
 		r:rect(box.x, box.y, 1, box.h, m[1], m[2], m[3], 1)
 		r:rect(box.x + box.w - 1, box.y, 1, box.h, m[1], m[2], m[3], 1)
-		local count = engine:queueSize()
 		local slotH = floor(box.h / max(1, count))
 		for i = 1, count do
 			local cells = engine:queueCells(i)
@@ -464,6 +469,7 @@ end
 function View:drawHold(engine)
 	local L = self.layout
 	if not L.holdBox then return end
+	if engine and engine.holdEnabled == false then return end
 	local r = self.render
 	local box = L.holdBox
 	local cell = L.nextCell
@@ -499,23 +505,35 @@ function View:drawHud(engine, opts)
 		self:label("SCORE", 8, 4, 1, NEON.dim)
 		self:label(pad(engine.score, 6), 8, 13, 2, NEON.ink)
 		self:labelRight("HI " .. pad(hi, 6), L.w - 8, 13, 2, NEON.amber)
-		self:label("HOLD", px, 30, 1, NEON.dim)
-		self:drawHold(engine)
-		self:label("LINES", px, 108, 1, NEON.dim)
+
+		-- Classic/B-Type hide the hold box, so the rest of the column moves up
+		-- to fill the space instead of leaving a hole.
+		local lineY, levelY
+		if engine.holdEnabled then
+			self:label("HOLD", px, 30, 1, NEON.dim)
+			self:drawHold(engine)
+			lineY, levelY = 108, 146
+		else
+			lineY, levelY = 44, 88
+		end
+
+		self:label("LINES", px, lineY, 1, NEON.dim)
 		local lineText, lineScale = pad(engine.lines, 3), 2
 		if engine.goal then
 			lineText = lineText .. "/" .. engine.goal
 			lineScale = 1
 		end
-		self:label(lineText, px, 117, lineScale, NEON.ink)
-		self:label("LEVEL", px, 146, 1, NEON.dim)
-		self:label(pad(engine.level, 2), px, 155, 2, NEON.amber)
+		self:label(lineText, px, lineY + 9, lineScale, NEON.ink)
+		self:label("LEVEL", px, levelY, 1, NEON.dim)
+		self:label(pad(engine.level, 2), px, levelY + 9, 2, NEON.amber)
+
 		self:label("NEXT", L.nextBox.x, 30, 1, NEON.dim)
 		self:drawNext(engine, opts)
-		self:label("SPACE DROP  C HOLD", px, 196, 1, NEON.dim)
-		if engine.goal then
-			self:label("BROKEN  GOAL " .. engine.goal, px, 208, 1, NEON.amber)
-		end
+
+		-- Stay inside the 94px side panel: the well starts at x=110 and the
+		-- old one-line hint ran straight over the bottom-left of the field.
+		self:label("SPACE DROP", px, 196, 1, NEON.dim)
+		self:label(engine.holdEnabled and "C HOLD  B MODE" or "B MODE", px, 208, 1, NEON.dim)
 		return
 	end
 
@@ -558,6 +576,20 @@ local function birdFrame(frame)
 	return (floor(frame / 10) % 2 == 0) and "bird_a" or "bird_b"
 end
 
+-- "classic" is the 0.3.1 default: one preview, no hold. "normal" is the full
+-- modern cabinet and "broken" is the B-Type garbage start.
+local MODE_LABEL = { classic = "CLASSIC", normal = "NORMAL", broken = "BROKEN" }
+
+local function modeLabel(opts)
+	if opts.mode then return MODE_LABEL[opts.mode] or MODE_LABEL.classic end
+	return opts.broken and MODE_LABEL.broken or MODE_LABEL.classic
+end
+
+local function holdHint(opts)
+	local mode = opts.mode or (opts.broken and "broken" or "classic")
+	return (mode == "normal") and "  C HOLD" or ""
+end
+
 function View:drawTitle(engine, opts)
 	opts = opts or {}
 	local r = self.render
@@ -586,11 +618,11 @@ function View:drawTitle(engine, opts)
 		if opts.blink ~= false then
 			r:textCentered("PRESS ENTER", L.w / 2, 172, 2, NEON.amber[1], NEON.amber[2], NEON.amber[3], 1)
 		end
-		r:textCentered("SPEED " .. pad(opts.speed or 5, 2) .. "  " ..
-			(opts.broken and "BROKEN" or "NORMAL") .. "   ARROWS MOVE  UP ROTATE",
+		r:textCentered("SPEED " .. pad(opts.speed or 5, 2) .. "  " .. modeLabel(opts) ..
+			"   ARROWS MOVE  UP ROTATE",
 			L.w / 2, 196, 1, NEON.dim[1], NEON.dim[2], NEON.dim[3], 1)
-		r:textCentered("SPACE DROP  C HOLD  B MODE  P PAUSE  M MUSIC", L.w / 2, 208, 1,
-			NEON.dim[1], NEON.dim[2], NEON.dim[3], 1)
+		r:textCentered("SPACE DROP" .. holdHint(opts) .. "  B MODE  P PAUSE  M MUSIC",
+			L.w / 2, 208, 1, NEON.dim[1], NEON.dim[2], NEON.dim[3], 1)
 		return
 	end
 
@@ -604,8 +636,8 @@ function View:drawTitle(engine, opts)
 		if opts.blink ~= false then
 			r:textCentered("PRESS ENTER", L.w / 2, 116, 1, GB.darkest[1], GB.darkest[2], GB.darkest[3], 1)
 		end
-		r:textCentered("SPEED " .. tostring(opts.speed or 5) ..
-			(opts.broken and "  BROKEN" or ""), L.w / 2, 130, 1, GB.darkest[1], GB.darkest[2], GB.darkest[3], 1)
+		r:textCentered("SPEED " .. tostring(opts.speed or 5) .. "  " .. modeLabel(opts),
+			L.w / 2, 130, 1, GB.darkest[1], GB.darkest[2], GB.darkest[3], 1)
 	else
 		r:rect(0, 0, L.w, L.h, SNES.backdrop[1], SNES.backdrop[2], SNES.backdrop[3], 1)
 		r:textCentered("HI " .. pad(opts.highScore or 0, 6), L.w / 2, 8, 1, SNES.grey[1], SNES.grey[2], SNES.grey[3], 1)
@@ -615,8 +647,8 @@ function View:drawTitle(engine, opts)
 		if opts.blink ~= false then
 			r:textCentered("PRESS ENTER", L.w / 2, 178, 2, SNES.white[1], SNES.white[2], SNES.white[3], 1)
 		end
-		r:textCentered("SPEED " .. tostring(opts.speed or 5) ..
-			(opts.broken and "  BROKEN" or ""), L.w / 2, 206, 1, SNES.grey[1], SNES.grey[2], SNES.grey[3], 1)
+		r:textCentered("SPEED " .. tostring(opts.speed or 5) .. "  " .. modeLabel(opts),
+			L.w / 2, 206, 1, SNES.grey[1], SNES.grey[2], SNES.grey[3], 1)
 	end
 end
 

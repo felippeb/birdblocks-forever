@@ -484,6 +484,9 @@ def make_sfx(out_dir: Path):
     blip("hard", [(0.012, 261.6), (0.010, 196.0), (0.055, 98.0)], duty=0.5, volume=0.42)
     # Hold: two quick rising blips.
     blip("hold", [(0.030, 659.3), (0.045, 987.8)], duty=0.125, volume=0.26)
+    # Silence: played on the music channel to cut a theme that the client will
+    # not stop through its handle (see Sound.StopMusic).
+    to_ogg(out_dir / "silence.ogg", [0.0] * int(0.10 * SAMPLE_RATE))
 
 
 def make_music(out_dir: Path):

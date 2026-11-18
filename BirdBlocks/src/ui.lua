@@ -21,8 +21,9 @@ local DEFAULTS = {
 	sound = true,
 	music = true,
 	autoOpen = true,
+	prompt = true,     -- ask before opening on a taxi
 	speed = 5,         -- 1..10, starting level; 5 is the experienced default
-	mode = "normal",   -- "normal" or "broken" (B-Type garbage start)
+	mode = "classic",  -- "classic" (1 next, no hold), "normal", "broken"
 	hi = {},
 	games = 0,
 	pos = nil,
@@ -42,11 +43,14 @@ local KEYMAP = {
 	C = "hold", LSHIFT = "hold", RSHIFT = "hold",
 	P = "pause", PAUSE = "pause",
 	SPACE = "harddrop", ENTER = "start",
-	B = "broken",
+	B = "mode",
 	M = "music",
 	MINUS = "zoomout", NUMPADMINUS = "zoomout",
 	EQUALS = "zoomin", PLUS = "zoomin", NUMPADPLUS = "zoomin",
 }
+
+local MODE_ORDER = { "classic", "normal", "broken" }
+local MODE_NAME = { classic = "CLASSIC", normal = "NORMAL", broken = "BROKEN" }
 
 local function clampSpeed(n)
 	return max(1, min(10, n or 5))
@@ -56,13 +60,44 @@ function UI:Speed()
 	return clampSpeed(tonumber(self.db.speed) or DEFAULTS.speed)
 end
 
-function UI:Broken()
-	return self.db.mode == "broken"
+function UI:Mode()
+	local m = self.db.mode
+	if m ~= "broken" and m ~= "normal" and m ~= "classic" then return DEFAULTS.mode end
+	return m
 end
 
-function UI:ToggleBroken()
-	self.db.mode = self:Broken() and "normal" or "broken"
-	self:Print(self:Broken() and "broken mode (garbage start, 25-line goal)" or "normal mode")
+function UI:ModeName()
+	return MODE_NAME[self:Mode()] or MODE_NAME.classic
+end
+
+function UI:Broken()
+	return self:Mode() == "broken"
+end
+
+function UI:Classic()
+	return self:Mode() == "classic"
+end
+
+-- classic -> normal -> broken -> classic. Classic is the default: one piece of
+-- preview and no hold, which is how the handheld Tetris games play.
+function UI:CycleMode()
+	local current = self:Mode()
+	local nextMode = MODE_ORDER[1]
+	for i = 1, #MODE_ORDER do
+		if MODE_ORDER[i] == current then
+			nextMode = MODE_ORDER[i % #MODE_ORDER + 1]
+			break
+		end
+	end
+	self.db.mode = nextMode
+	self.db.modePicked = true
+	if nextMode == "classic" then
+		self:Print("classic mode (one piece ahead, no hold)")
+	elseif nextMode == "normal" then
+		self:Print("normal mode (three ahead, hold)")
+	else
+		self:Print("broken mode (garbage start, 25-line goal)")
+	end
 	if self:IsShown() then self:Draw() end
 end
 
@@ -93,7 +128,14 @@ function UI:Init()
 		end
 	end
 	self.db.speed = clampSpeed(self.db.speed)
-	if self.db.mode ~= "broken" then self.db.mode = "normal" end
+	-- 0.3.1 made classic (one piece ahead, no hold) the default. Anyone who
+	-- never chose a mode gets it; an explicit broken/normal choice sticks.
+	if not self.db.modePicked and (self.db.mode == nil or self.db.mode == "normal") then
+		self.db.mode = "classic"
+	end
+	if self.db.mode ~= "classic" and self.db.mode ~= "normal" and self.db.mode ~= "broken" then
+		self.db.mode = DEFAULTS.mode
+	end
 	self.db.hi = self.db.hi or {}
 	if not View.LAYOUT[self.db.profile] then self.db.profile = "modern" end
 	-- 0.2 made the modern ruleset the default. Players upgrading from 0.1
@@ -105,6 +147,7 @@ function UI:Init()
 
 	Sound.Init(BirdBlocksAudio, { sfx = self.db.sound, music = self.db.music })
 	self:CreateFrame()
+	self:RegisterPopup()
 	self:SetProfile(self.db.profile, true)
 	self:ApplyScale()
 	self:ApplyPosition()
@@ -155,7 +198,7 @@ function UI:CreateFrame()
 
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	title:SetPoint("LEFT", bar, "LEFT", 8, 0)
-	title:SetText("|cff9bbc0fBIRD BLOCKS|r  |cff777777arrows move, space drop, c hold, p pause, esc menu, wheel zoom|r")
+	title:SetText("|cff9bbc0fBIRD BLOCKS|r  |cff777777arrows move, space drop, b mode, p pause, esc menu, wheel zoom|r")
 	self.titleText = title
 
 	local close = CreateFrame("Button", nil, bar, "UIPanelCloseButton")
@@ -331,6 +374,7 @@ function UI:Open(auto)
 	if not self.ready then return end
 	if self.menuOpen then return end
 	if self.shown then return end
+	self:HidePrompt()
 	self.shown = true
 	self.autoOpened = auto and true or false
 	self.accumulator = 0
@@ -374,15 +418,57 @@ function UI:Toggle()
 	if self:IsShown() then self:Close() else self:Open(false) end
 end
 
+-- The flight auto-open is a question, not a command: the player gets a client
+-- dialog first, and the cabinet only appears if they say yes. Without it the
+-- theme would start playing at a player who never asked to play.
+function UI:PromptEnabled()
+	return self.db.prompt ~= false
+end
+
+function UI:RegisterPopup()
+	if self.popupRegistered or not StaticPopupDialogs then return end
+	self.popupRegistered = true
+	StaticPopupDialogs["BIRDBLOCKS_TAXI"] = {
+		text = "|cff9bbc0fBIRD BLOCKS|r\n\nPlay while you fly?",
+		button1 = "PLAY",
+		button2 = "NOT NOW",
+		OnAccept = function()
+			if UnitOnTaxi and UnitOnTaxi("player") then UI:Open(true) end
+		end,
+		whileDead = true,
+		hideOnEscape = true,
+		preferredIndex = 3,
+	}
+end
+
+function UI:HidePrompt()
+	if StaticPopup_Hide then StaticPopup_Hide("BIRDBLOCKS_TAXI") end
+end
+
+function UI:AskToPlay()
+	if not self:PromptEnabled() or not StaticPopup_Show or not StaticPopupDialogs then
+		self:Open(true)
+		return
+	end
+	self.rideOpened = true
+	StaticPopup_Show("BIRDBLOCKS_TAXI")
+end
+
 function UI:StartGame()
 	if not self.engine then return end
 	local level = self:Speed()
+	local mode = self:Mode()
 	local opts
-	if self:Broken() then
+	if mode == "broken" then
 		-- Random B-Type mess, never more than 60% of the well, with the Game
-		-- Boy's 25-line goal. Faster speeds start with a taller stack.
+		-- Boy's 25-line goal. Faster speeds start with a taller stack, and the
+		-- board stays handheld-simple: one piece ahead, no hold.
 		local fraction = min(0.60, 0.25 + level * 0.035 + math.random() * 0.10)
-		opts = { garbage = fraction, goal = 25 }
+		opts = { garbage = fraction, goal = 25, preview = 1, hold = false, mode = "broken" }
+	elseif mode == "classic" then
+		opts = { preview = 1, hold = false, mode = "classic" }
+	else
+		opts = { mode = "normal" }
 	end
 	self.engine:start(level, opts)
 	if self.screen then self.screen:resetFx() end
@@ -449,8 +535,8 @@ function UI:OnKeyDown(key)
 		elseif action == "right" then
 			self.db.speed = clampSpeed(self:Speed() + 1)
 			self:Draw()
-		elseif action == "broken" then
-			self:ToggleBroken()
+		elseif action == "mode" then
+			self:CycleMode()
 		elseif action == "start" or action == "harddrop" then
 			self:StartGame()
 			self:Draw()
@@ -608,7 +694,7 @@ function UI:Draw()
 			frame = floor((GetTime and GetTime() or 0) * 60),
 			highScore = hi,
 			speed = self:Speed(),
-			broken = self:Broken(),
+			mode = self:Mode(),
 			blink = self:Blink(),
 		})
 	else
@@ -644,6 +730,7 @@ end
 --------------------------------------------------------------------------- taxi / combat
 
 function UI:OnCombat()
+	self:HidePrompt()
 	if not self:IsShown() then return end
 	self.reopenAfterCombat = self.autoOpened or (UnitOnTaxi and UnitOnTaxi("player"))
 	if self.engine and (self.engine.phase == "falling" or self.engine.phase == "are" or self.engine.phase == "clearing") then
@@ -667,13 +754,13 @@ function UI:PollTaxi(elapsed)
 		if self.taxiTime >= 1.5 and not self.shown
 			and not self.rideOpened and not self.reopenAfterCombat then
 			if not (InCombatLockdown and InCombatLockdown()) then
-				self.rideOpened = true
-				self:Open(true)
+				self:AskToPlay()
 			end
 		end
 	else
 		self.taxiTime = 0
 		self.rideOpened = false
+		self:HidePrompt()
 		if self.shown and self.autoOpened then
 			self.taxiGone = self.taxiGone + elapsed
 			if self.taxiGone >= 2 then
@@ -744,14 +831,26 @@ function UI:RegisterSlash()
 				self.db.speed = clampSpeed(floor(n))
 				self:Print("speed " .. self.db.speed)
 			end
-		elseif cmd == "broken" or cmd == "problem" or cmd == "btype" or cmd == "mess" then
-			self.db.mode = "broken"
-			self:Print("broken mode (random start, clear 25 lines)")
+		elseif cmd == "classic" then
+			self.db.mode = "classic"
+			self.db.modePicked = true
+			self:Print("classic mode (one piece ahead, no hold)")
 			if self.shown then self:Draw() end
 		elseif cmd == "normal" or cmd == "atype" then
 			self.db.mode = "normal"
-			self:Print("normal mode")
+			self.db.modePicked = true
+			self:Print("normal mode (three ahead, hold)")
 			if self.shown then self:Draw() end
+		elseif cmd == "broken" or cmd == "problem" or cmd == "btype" or cmd == "mess" then
+			self.db.mode = "broken"
+			self.db.modePicked = true
+			self:Print("broken mode (random start, clear 25 lines)")
+			if self.shown then self:Draw() end
+		elseif cmd == "mode" then
+			self:CycleMode()
+		elseif cmd == "prompt" then
+			self.db.prompt = not self:PromptEnabled()
+			self:Print("play prompt on taxi " .. (self:PromptEnabled() and "on" or "off"))
 		elseif cmd == "reset" then
 			self.db.hi = {}
 			self:Print("high scores cleared")
@@ -759,7 +858,8 @@ function UI:RegisterSlash()
 			self:Print("/blocks - open or close")
 			self:Print("/blocks modern|gb|snes - pick the version")
 			self:Print("/blocks speed N - 1..10, default 5")
-			self:Print("/blocks broken|normal - garbage start / clean start")
+			self:Print("/blocks classic|normal|broken - select a mode")
+			self:Print("/blocks prompt - ask before opening on a taxi")
 			self:Print("/blocks auto - auto-open on taxi")
 			self:Print("/blocks music|sound - toggle audio")
 			self:Print("/blocks zoom N - 1..8, 0 = fit screen")
@@ -791,6 +891,7 @@ loader:SetScript("OnEvent", function(_, event, name)
 		-- FrameXML is fully loaded by now; retry in case GameMenuFrame was not
 		-- available when the addon itself loaded.
 		UI:RegisterMenuHooks()
+		UI:RegisterPopup()
 	elseif event == "PLAYER_REGEN_DISABLED" then
 		if UI.ready then UI:OnCombat() end
 	elseif event == "PLAYER_REGEN_ENABLED" then

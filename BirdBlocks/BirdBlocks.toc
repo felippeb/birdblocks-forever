@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Bird Blocks
-## Notes: Modern neon Tetris plus Game Boy and NES modes, with speed and broken starts. /blocks to open.
+## Notes: Modern neon Tetris plus Game Boy and NES modes. Classic (one ahead, no hold), normal and B-Type broken. /blocks to open.
 ## Author: felippeb
-## Version: 0.3.0-forever
+## Version: 0.3.1-forever
 ## SavedVariables: BirdBlocksDB
 ## IconTexture: Interface\AddOns\BirdBlocks\icon.tga
 ## X-Category: Miscellaneous

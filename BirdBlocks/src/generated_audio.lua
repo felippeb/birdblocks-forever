@@ -13,6 +13,7 @@ BirdBlocksAudio = {
 		over = "sfx\\over.ogg",
 		pause = "sfx\\pause.ogg",
 		rotate = "sfx\\rotate.ogg",
+		silence = "sfx\\silence.ogg",
 		start = "sfx\\start.ogg",
 		tetris = "sfx\\tetris.ogg",
 	},

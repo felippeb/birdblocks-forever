@@ -30,14 +30,18 @@ local function rawPlay(path, channel)
 end
 
 local function playFile(path, channel)
+	local used = channel
 	local handle = rawPlay(path, channel)
-	if handle then return handle end
-	if channel == "Music" then
+	if not handle and channel == "Music" then
 		handle = rawPlay(path, "SFX")
-		if handle then return handle end
+		if handle then used = "SFX" end
 	end
-	if channel then return rawPlay(path, nil) end
-	return nil
+	if not handle and channel then
+		handle = rawPlay(path, nil)
+		if handle then used = nil end
+	end
+	if handle then Sound.lastChannel = used end
+	return handle
 end
 
 function Sound.Init(audio, opts)
@@ -48,6 +52,7 @@ function Sound.Init(audio, opts)
 	Sound.playing = false
 	Sound.loopable = false
 	Sound.handle = nil
+	Sound.lastChannel = "SFX"
 	Sound.started = 0
 	Sound.lastAttempt = -10
 end
@@ -64,9 +69,20 @@ function Sound.Play(name)
 	return playFile(Sound.audio.base .. rel, "SFX") ~= nil
 end
 
+-- Some clients return a handle for PlaySoundFile but still ignore StopSound on
+-- it, which left the theme playing after the window closed. Stop the handle
+-- when we can, then cut the channel with a silent clip: on clients that reuse
+-- one channel per sound, starting a new file there silences the old one.
 function Sound.StopMusic()
+	local wasPlaying = Sound.playing
 	if Sound.handle and StopSound then
 		pcall(StopSound, Sound.handle)
+	end
+	if wasPlaying and Sound.audio then
+		local silence = Sound.audio.sfx and Sound.audio.sfx.silence
+		if silence then
+			playFile(Sound.audio.base .. silence, Sound.lastChannel or "SFX")
+		end
 	end
 	Sound.handle, Sound.playing = nil, false
 end

@@ -263,6 +263,7 @@ function Engine.new(profileID, rng)
 	self.combo, self.b2b = 0, false
 	self.lastClear = 0
 	self.goal, self.mode = nil, "normal"
+	self.preview, self.holdEnabled = nil, nil
 	return self
 end
 
@@ -321,7 +322,7 @@ function Engine:nextFromSource()
 end
 
 function Engine:refillQueue()
-	local size = self.profile.queue or 1
+	local size = self:queueSize()
 	while #self.queue < size do
 		self.queue[#self.queue + 1] = self:nextFromSource()
 	end
@@ -393,7 +394,7 @@ function Engine:queueType(index)
 end
 
 function Engine:queueSize()
-	return self.profile.queue or 1
+	return self.preview or self.profile.queue or 1
 end
 
 function Engine:holdCells()
@@ -436,6 +437,8 @@ end
 
 -- opts.garbage  fraction of the well to prefill (0..1), B-Type style
 -- opts.goal     lines to clear for a win; nil means endless
+-- opts.preview  pieces shown in NEXT (defaults to the profile's queue)
+-- opts.hold     whether hold is available (defaults to the profile's rule)
 function Engine:start(level, opts)
 	opts = opts or {}
 	self.startLevel = max(0, min(10, level or 0))
@@ -456,7 +459,14 @@ function Engine:start(level, opts)
 	self.combo, self.b2b = 0, false
 	self.lastClear = 0
 	self.goal = opts.goal
-	self.mode = (opts.garbage and opts.garbage > 0) and "broken" or "normal"
+	self.mode = opts.mode or ((opts.garbage and opts.garbage > 0) and "broken" or "normal")
+	self.preview = max(1, opts.preview or self.profile.queue or 1)
+	if opts.hold == nil then
+		self.holdEnabled = self.profile.hold == true
+	else
+		self.holdEnabled = opts.hold == true and self.profile.hold == true
+	end
+	self.canHold = self.holdEnabled
 	if self.mode == "broken" then self:fillGarbage(opts.garbage) end
 	self:refillQueue()
 	self.phase = "are"
@@ -505,7 +515,7 @@ function Engine:spawn(kind)
 	self.piece = { type = kind, rot = 0, x = SPAWN_X, y = 0 }
 	self.phase = "falling"
 	self.gravTimer, self.lockTimer, self.lockResets = 0, 0, 0
-	self.canHold = true
+	self.canHold = self.holdEnabled ~= false
 	self.lastAction = nil
 end
 
@@ -587,7 +597,7 @@ end
 
 function Engine:hold()
 	local p = self.piece
-	if not self.profile.hold or not p or self.phase ~= "falling" then return false end
+	if not self.holdEnabled or not p or self.phase ~= "falling" then return false end
 	if not self.canHold then return false end
 	local current = p.type
 	local swapped = self.holdType

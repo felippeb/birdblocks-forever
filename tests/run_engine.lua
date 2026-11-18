@@ -590,6 +590,24 @@ do
 	check("win event is emitted", won)
 end
 
+do
+	-- Classic mode: one piece of preview and no hold, on top of any profile.
+	local e = Engine.new("modern", lcg(11))
+	e:start(5, { preview = 1, hold = false, mode = "classic" })
+	eq("classic mode recorded", e.mode, "classic")
+	eq("one piece of preview", e:queueSize(), 1)
+	eq("queue stays one deep", #e.queue, 1)
+	eq("hold disabled", e.holdEnabled, false)
+	e:step() -- ARE -> spawn
+	eq("hold is refused", e:hold(), false)
+	eq("nothing was stowed", e.holdType, nil)
+
+	local n = Engine.new("modern", lcg(12))
+	n:start(5)
+	eq("modern defaults to three previews", n:queueSize(), 3)
+	eq("modern defaults to hold", n.holdEnabled, true)
+end
+
 --------------------------------------------------------------------------- report
 
 print(string.format("%d passed, %d failed", passed, failed))

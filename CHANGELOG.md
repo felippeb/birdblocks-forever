@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.1-forever - 2026-11-18
+
+The readability and default-feel update.
+
+### Game
+
+- **Classic is the new default mode:** one piece of preview and no hold, which
+  is how the handheld games play. **Normal** keeps the full modern cabinet
+  (three-piece preview + hold), and **Broken** keeps the B-Type garbage start.
+  **B** on the title cycles the three modes; `/blocks classic | normal | broken`
+  and `/blocks mode` do the same.
+- Broken runs now use the same one-ahead, no-hold rules, and their LINES counter
+  shows the 25-line goal directly (`009/25`).
+
+### Fixes
+
+- **The bottom-left hint no longer runs over the well.** The old one-line
+  "SPACE DROP C HOLD" text crossed the left edge of the field; it is now split
+  into two short lines inside the side panel, and the hidden hold box no longer
+  leaves a hole in classic/B-Type.
+- **Leaving the game no longer keeps the theme playing.** Closing the window now
+  cuts the music channel with a silent clip as well as stopping the handle, for
+  clients that ignore `StopSound` on file handles.
+- **The taxi asks before opening.** A dialog offers **PLAY** / **NOT NOW**;
+  nothing opens, and no music plays, until you accept. `/blocks prompt` toggles
+  the question, and `/blocks auto` still turns the whole auto-open off.
+- The NEXT box shrinks to fit a single preview instead of leaving a tall empty
+  frame.
+
+### Tooling
+
+- 166 engine assertions and 132 addon assertions, plus the 20,000-frame stress
+  run. New coverage for the classic rules, mode cycling, the taxi prompt and
+  the silent music cut.
+
 ## 0.3.0-forever - 2026-11-18
 
 The speed, B-Type and menu update.

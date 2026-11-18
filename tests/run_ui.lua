@@ -49,7 +49,7 @@ check("initialised", UI._initialized())
 check("window starts hidden", not UI:IsShown())
 eq("default profile", UI.db.profile, "modern")
 eq("default speed", UI.db.speed, 5)
-eq("normal mode by default", UI.db.mode, "normal")
+eq("classic mode by default", UI.db.mode, "classic")
 eq("auto-open on by default", UI.db.autoOpen, true)
 eq("saved variables written", type(BirdBlocksDB), "table")
 check("engine exists", UI.engine ~= nil)
@@ -136,6 +136,7 @@ eq("P pauses", e.phase, "paused")
 UI:Close()
 check("keyboard released on close", UI.frame.keyboard == false)
 check("music stopped on close", BirdBlocks.Sound.playing == false)
+check("closing cuts the music channel", Mock.CountSounds("silence") >= 1)
 
 --------------------------------------------------------------------------- music toggle
 
@@ -157,10 +158,16 @@ Mock.Advance(0.3)
 advance(3)
 check("does not open without a taxi", not UI:IsShown())
 
+-- The flight asks first: no cabinet and no music until the player says PLAY.
+local themedBefore = Mock.CountSounds("theme")
 Mock.taxi = true
 advance(2.0)
-check("auto-opens on the taxi", UI:IsShown())
-check("auto-open starts playing", UI.engine.phase ~= "title")
+eq("taxi asks before opening", Mock.popup, "BIRDBLOCKS_TAXI")
+check("the cabinet stays closed until the player agrees", not UI:IsShown())
+eq("no music before the player agrees", Mock.CountSounds("theme"), themedBefore)
+Mock.AcceptPopup()
+check("PLAY opens the cabinet", UI:IsShown())
+check("PLAY starts a game", UI.engine.phase ~= "title")
 
 Mock.taxi = false
 advance(3.0)
@@ -172,14 +179,37 @@ UI.db.autoOpen = false
 Mock.taxi = true
 advance(3.0)
 check("respects autoOpen = false", not UI:IsShown())
+check("no prompt when auto-open is off", Mock.popup == nil)
 UI.db.autoOpen = true
 Mock.taxi = false
 advance(3.0)
 
--- Closing the window mid-flight is final for that flight: it must not pop
--- back open a second later, but the next flight must still open normally.
+-- NOT NOW means no cabinet, and no second question during the same flight.
 Mock.taxi = true
 advance(2.0)
+eq("the prompt comes back next flight", Mock.popup, "BIRDBLOCKS_TAXI")
+Mock.CancelPopup()
+check("NOT NOW leaves the cabinet closed", not UI:IsShown())
+advance(4.0)
+check("NOT NOW is not asked again mid-flight", Mock.popup == nil)
+Mock.taxi = false
+advance(3.0)
+
+-- Prompt off: the cabinet opens by itself, like the old behaviour.
+UI.db.prompt = false
+Mock.taxi = true
+advance(2.0)
+check("prompt off opens directly", UI:IsShown())
+UI:Close()
+Mock.taxi = false
+advance(3.0)
+UI.db.prompt = true
+
+-- Closing the window mid-flight is final for that flight: it must not pop
+-- back open a second later, but the next flight must still ask normally.
+Mock.taxi = true
+advance(2.0)
+Mock.AcceptPopup()
 check("opens on the next flight", UI:IsShown())
 UI:Close()
 advance(4.0)
@@ -188,6 +218,8 @@ Mock.taxi = false
 advance(3.0)
 Mock.taxi = true
 advance(2.0)
+eq("the flight after that asks again", Mock.popup, "BIRDBLOCKS_TAXI")
+Mock.AcceptPopup()
 check("the flight after that opens again", UI:IsShown())
 Mock.taxi = false
 advance(3.0)
@@ -196,6 +228,7 @@ advance(3.0)
 
 Mock.taxi = true
 advance(2.0)
+Mock.AcceptPopup()
 check("on taxi again", UI:IsShown())
 Mock.FireEvent("PLAYER_REGEN_DISABLED")
 check("combat closes the game", not UI:IsShown())
@@ -251,9 +284,16 @@ eq("auto-open toggled off", UI.db.autoOpen, false)
 SlashCmdList["BIRDBLOCKS"]("auto")
 eq("auto-open toggled on", UI.db.autoOpen, true)
 
+SlashCmdList["BIRDBLOCKS"]("prompt")
+eq("play prompt toggled off", UI.db.prompt, false)
+SlashCmdList["BIRDBLOCKS"]("prompt")
+eq("play prompt toggled on", UI.db.prompt, true)
+
 --------------------------------------------------------------------------- modern input
 
 UI:Open(false)
+UI.db.mode = "normal"
+UI.db.modePicked = true
 UI:StartGame()
 local me = UI.engine
 me.areTimer = 1
@@ -304,17 +344,44 @@ Mock.SendKey(UI.frame, "SPACE", false)
 check("space restarts after game over", UI.engine.phase ~= "over", UI.engine.phase)
 UI:Close()
 
---------------------------------------------------------------------------- broken mode
+--------------------------------------------------------------------------- modes
 
 UI:Open(false)
 UI.engine.phase = "title"
+-- B cycles the three modes: classic -> normal -> broken -> classic.
+UI.db.mode = "classic"
 Mock.SendKey(UI.frame, "B", true)
 Mock.SendKey(UI.frame, "B", false)
-eq("B toggles broken mode on the title", UI.db.mode, "broken")
+eq("B goes to normal", UI.db.mode, "normal")
+Mock.SendKey(UI.frame, "B", true)
+Mock.SendKey(UI.frame, "B", false)
+eq("B goes to broken", UI.db.mode, "broken")
+Mock.SendKey(UI.frame, "B", true)
+Mock.SendKey(UI.frame, "B", false)
+eq("B wraps to classic", UI.db.mode, "classic")
+
+-- Classic: clean well, one piece ahead, no hold.
+UI:StartGame()
+local ce = UI.engine
+eq("classic run", ce.mode, "classic")
+eq("classic shows one piece", ce:queueSize(), 1)
+eq("classic has no hold", ce.holdEnabled, false)
+ce.areTimer = 1
+ce:step()
+Mock.SendKey(UI.frame, "C", true)
+Mock.SendKey(UI.frame, "C", false)
+eq("C does nothing in classic", ce.holdType, nil)
+check("classic board starts clean", ce.board[ce.rows - 1][0] == false)
+
+-- Broken: B-Type garbage, 25-line goal, handheld preview rules.
+SlashCmdList["BIRDBLOCKS"]("broken")
+eq("broken mode selected", UI.db.mode, "broken")
 UI:StartGame()
 local be = UI.engine
 eq("broken run", be.mode, "broken")
 eq("broken goal", be.goal, 25)
+eq("broken shows one piece", be:queueSize(), 1)
+eq("broken has no hold", be.holdEnabled, false)
 local garbage = 0
 for y = 0, be.rows - 1 do
 	for x = 0, be.cols - 1 do
@@ -326,12 +393,15 @@ check("broken leaves headroom", be.board[0][0] == false)
 be.score = 4321
 UI:RecordScore()
 eq("broken high scores are separate", UI.db.hi["modern:broken"], 4321)
-check("normal high score is untouched", UI.db.hi["modern"] ~= 4321)
+check("classic high score is untouched", UI.db.hi["modern"] ~= 4321)
 
+-- Normal: the full modern cabinet, three ahead and hold.
 SlashCmdList["BIRDBLOCKS"]("normal")
 eq("normal mode selected", UI.db.mode, "normal")
 UI:StartGame()
 eq("normal run starts clean", UI.engine.mode, "normal")
+eq("normal shows three pieces", UI.engine:queueSize(), 3)
+eq("normal has hold", UI.engine.holdEnabled, true)
 UI:Close()
 
 --------------------------------------------------------------------------- window geometry
@@ -396,6 +466,7 @@ UI.engine.phase = "over"
 UI:Close()
 Mock.taxi = true
 advance(2.0)
+Mock.AcceptPopup()
 check("taxi starts a new run after game over",
 	UI:IsShown() and UI.engine.phase ~= "over")
 Mock.taxi = false

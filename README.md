@@ -5,8 +5,8 @@
 Tetris, playable **on the flight-path bird** in **WoW Forever**
 (interface `16001`, game version `1.60.1`).
 
-Get on a taxi, and the game opens by itself ready to play. Land, and it closes.
-No buttons, no menus, no addon config to learn.
+Get on a taxi and it asks if you want to play; say yes and the game opens ready
+to go. Land, and it closes. No buttons, no menus, no addon config to learn.
 
 ![Modern mode](docs/screenshot-modern-game.png)
 
@@ -16,8 +16,8 @@ A real, from-scratch Tetris clone for Forever — not a skin over something else
 Three rulesets share the same engine:
 
 - **Modern** (default) — a neon arcade cabinet with guideline rules: SRS wall
-  kicks, 7-bag randomiser, hold, ghost piece, lock delay, hard drop and the
-  modern scoring table.
+  kicks, 7-bag randomiser, ghost piece, lock delay, hard drop and the modern
+  scoring table. Hold and a three-piece preview are available in **normal** mode.
 - **Game Boy** — 10×18, four shades of green, left-handed Nintendo rotation,
   no kicks, no lock delay.
 - **SNES / NES** — 10×20, colored pieces, right-handed Nintendo rotation with
@@ -31,7 +31,7 @@ Three rulesets share the same engine:
 | DAS / ARR | 10 / 1 frames | 24 / 6 frames | 16 / 6 frames |
 | ARE | 4 frames | 2 frames | 12 frames |
 | Rotation | SRS + wall kicks | left-handed Nintendo | right-handed Nintendo |
-| Extras | hold, ghost, hard drop, lock delay | — | — |
+| Extras | ghost, hard drop, lock delay (hold in normal mode) | — | — |
 | Scoring | 100 / 300 / 500 / 800 × (level + 1), T-spins, B2B, combos, perfect clears | 40 / 100 / 300 / 1200 × (level + 1) | same |
 | Randomiser | 7-bag | no immediate repeat | no immediate repeat |
 | Levels | 1–20 | 1–20 | 1–29 |
@@ -53,16 +53,19 @@ as an alias.
 Speed applies to every profile; Game Boy and SNES still use their original
 gravity, DAS and line-clear frame tables for the level you pick.
 
-## Broken mode
+## Modes
 
-The Game Boy's B-Type board, available in every profile: `/blocks broken`
-(or `/blocks problem`, or press **B** on the title screen). The well starts
-prefilled with junk rows up to **60%** of the field, and the run ends when you
-clear **25 lines**. Higher speeds start with a taller mess. `/blocks normal`
-goes back to a clean well.
+Press **B** on the title screen to cycle, or pick one directly:
 
-Broken runs keep their own high scores, so the garbage start does not pollute
-the normal table.
+- **Classic** (default) — a clean well, **one piece of preview** and **no hold**.
+  This is the handheld feel: you only ever see the piece that is coming next.
+- **Normal** — the full modern cabinet: **three pieces of preview** and hold.
+- **Broken** — the Game Boy's B-Type board, available in every profile. The well
+  starts prefilled with junk rows up to **60%** of the field, and the run ends
+  when you clear **25 lines**. Higher speeds start with a taller mess.
+
+`/blocks classic | normal | broken`, or `/blocks mode` to cycle. Broken runs keep
+their own high scores, so the garbage start does not pollute the clean table.
 
 ![Broken mode](docs/screenshot-modern-broken.png)
 
@@ -75,8 +78,8 @@ the normal table.
 | ↑ / X / W | Rotate clockwise |
 | Z / Ctrl | Rotate counter-clockwise |
 | Space | Hard drop (+2 per cell, modern only) |
-| C / Shift | Hold (modern only) |
-| B | Broken mode on the title screen |
+| C / Shift | Hold (normal mode only) |
+| B | Cycle mode on the title screen |
 | Enter | Start, or restart after game over |
 | P | Pause / resume |
 | Esc | Opens the client's game menu; the run pauses behind it |
@@ -91,14 +94,17 @@ by it.
 
 ## Taxi behaviour
 
-- Opens **1.5 s** after `UnitOnTaxi("player")` becomes true, and starts a game
-  immediately — Enter also works, it is not a title-screen stop.
+- **1.5 s** after `UnitOnTaxi("player")` becomes true, a dialog asks whether you
+  want to play. **PLAY** opens the cabinet and starts a run; **NOT NOW** leaves
+  it closed and nothing is played.
+- No music until you say PLAY.
 - Closes **2 s** after the flight ends.
 - Closes instantly in combat and reopens when combat ends if you are still flying.
-- One automatic open per flight: close it mid-air and it stays closed until the
+- One ask per flight: decline or close it mid-air and it stays quiet until the
   next taxi.
-- Leaving the game paused (or closing it) stops the music; nothing plays on the ground.
-- `/blocks auto` turns the automatic behaviour off entirely.
+- Leaving the game, pausing, or closing the window stops the music.
+- `/blocks auto` turns the automatic prompt off entirely; `/blocks prompt`
+  toggles the dialog (with it off, the cabinet opens directly).
 
 ## Install
 
@@ -125,7 +131,9 @@ pipeline and starts uploading as soon as the project id is configured.
 /blocks                 open or close
 /blocks modern | gb | snes   pick the version
 /blocks speed N         1..10 starting level, default 5
-/blocks broken | normal B-Type garbage start / clean start
+/blocks classic | normal | broken   select a mode
+/blocks mode            cycle classic -> normal -> broken
+/blocks prompt          ask before opening on a taxi
 /blocks auto            auto-open on taxi on/off
 /blocks music | sound   toggle audio
 /blocks zoom N          1..8, 0 = fit the screen
@@ -134,7 +142,7 @@ pipeline and starts uploading as soon as the project id is configured.
 ```
 
 `/bb` is a shorter alias. `/blocks level N` still works as an alias for speed.
-High scores are kept per profile and per mode in `BirdBlocksDB`. Existing
+High scores are kept per profile, with broken runs in their own table. Existing
 installs adopt the modern profile once on upgrade; an explicit `/blocks gb` or
 `/blocks snes` always wins. An old start level is migrated to the same speed.
 

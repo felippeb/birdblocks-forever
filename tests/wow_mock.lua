@@ -221,10 +221,19 @@ function Mock.Reset()
 	Mock.UIParent.w, Mock.UIParent.h = 1920, 1080
 	Mock.GameMenuFrame = Mock.CreateFrame("Frame", "GameMenuFrame", Mock.UIParent)
 	Mock.GameMenuFrame.shown = false
+	Mock.popup = nil
 
 	CreateFrame = Mock.CreateFrame
 	UIParent = Mock.UIParent
 	GameMenuFrame = Mock.GameMenuFrame
+	StaticPopupDialogs = {}
+	StaticPopup_Show = function(which)
+		Mock.popup = which
+		return true
+	end
+	StaticPopup_Hide = function(which)
+		if Mock.popup == which then Mock.popup = nil end
+	end
 	GetTime = function() return Mock.time end
 	UnitOnTaxi = function() return Mock.taxi end
 	InCombatLockdown = function() return Mock.combat end
@@ -265,6 +274,23 @@ function Mock.SendKey(frame, key, down)
 	else
 		if frame.scripts.OnKeyDown then frame.scripts.OnKeyDown(frame, key) end
 	end
+end
+
+-- Click PLAY / NOT NOW on the last static popup the addon asked for.
+function Mock.AcceptPopup()
+	local which = Mock.popup
+	Mock.popup = nil
+	local dialog = which and StaticPopupDialogs[which]
+	if dialog and dialog.OnAccept then dialog.OnAccept() end
+	return which
+end
+
+function Mock.CancelPopup()
+	local which = Mock.popup
+	Mock.popup = nil
+	local dialog = which and StaticPopupDialogs[which]
+	if dialog and dialog.OnCancel then dialog.OnCancel() end
+	return which
 end
 
 -- Sorted draw list for everything the renderer produced this frame.
