@@ -47,7 +47,7 @@ end
 
 check("initialised", UI._initialized())
 check("window starts hidden", not UI:IsShown())
-eq("default profile", UI.db.profile, "gb")
+eq("default profile", UI.db.profile, "modern")
 eq("auto-open on by default", UI.db.autoOpen, true)
 eq("saved variables written", type(BirdBlocksDB), "table")
 check("engine exists", UI.engine ~= nil)
@@ -212,6 +212,11 @@ SlashCmdList["BIRDBLOCKS"]("gb")
 eq("back to game boy", UI.engine.profile.id, "gb")
 eq("game boy has 18 rows", UI.engine.rows, 18)
 
+SlashCmdList["BIRDBLOCKS"]("modern")
+eq("slash returns to modern", UI.db.profile, "modern")
+eq("manual profile choice is remembered", UI.db.profilePicked, true)
+eq("modern has 20 rows", UI.engine.rows, 20)
+
 SlashCmdList["BIRDBLOCKS"]("zoom 6")
 eq("zoom saved", UI.db.zoom, 6)
 eq("render scale applied", UI.render:getScale(), 6)
@@ -227,6 +232,58 @@ SlashCmdList["BIRDBLOCKS"]("auto")
 eq("auto-open toggled off", UI.db.autoOpen, false)
 SlashCmdList["BIRDBLOCKS"]("auto")
 eq("auto-open toggled on", UI.db.autoOpen, true)
+
+--------------------------------------------------------------------------- modern input
+
+UI:Open(false)
+UI:StartGame()
+local me = UI.engine
+me.areTimer = 1
+me:step()
+eq("modern is the default engine", me.profile.id, "modern")
+
+-- Space is a hard drop: the piece locks at once and scores two per row.
+me.piece.type, me.piece.x, me.piece.y, me.piece.rot = "T", 3, 0, 0
+me.score = 0
+Mock.SendKey(UI.frame, "SPACE", true)
+Mock.SendKey(UI.frame, "SPACE", false)
+check("space hard drops", me.piece == nil, me.phase)
+check("space hard drop scores", me.score > 0, me.score)
+UI:Tick()
+check("hard drop sound", Mock.CountSounds("hard") >= 1)
+
+-- C holds the active piece, once.
+UI:StartGame()
+local he = UI.engine
+he.areTimer = 1
+he:step()
+local first = he.piece.type
+Mock.SendKey(UI.frame, "C", true)
+Mock.SendKey(UI.frame, "C", false)
+eq("C holds a piece", he.holdType, first)
+eq("C disables hold until lock", he.canHold, false)
+UI:Tick()
+check("hold sound", Mock.CountSounds("hold") >= 1)
+
+-- The modern screen draws a ghost, a hold box and a three-piece queue.
+check("modern has a ghost", #he:ghostCells() == 4)
+eq("modern queues three pieces", he:queueSize(), 3)
+check("modern draws a hold box", UI.screen.layout.holdBox ~= nil)
+eq("modern uses neon blocks", UI.screen.layout.tile, "neon_block")
+eq("modern has a ghost tile", UI.screen.layout.ghostTile, "neon_ghost")
+
+-- Space also starts a game from the title and restarts after game over.
+UI:Close()
+UI:Open(false)
+UI.engine.phase = "title"
+Mock.SendKey(UI.frame, "SPACE", true)
+Mock.SendKey(UI.frame, "SPACE", false)
+check("space starts from the title", UI.engine.phase ~= "title", UI.engine.phase)
+UI.engine.phase = "over"
+Mock.SendKey(UI.frame, "SPACE", true)
+Mock.SendKey(UI.frame, "SPACE", false)
+check("space restarts after game over", UI.engine.phase ~= "over", UI.engine.phase)
+UI:Close()
 
 --------------------------------------------------------------------------- window geometry
 

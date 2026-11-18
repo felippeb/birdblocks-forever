@@ -18,6 +18,7 @@ recording or of Nintendo's arrangement.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import math
 from pathlib import Path
 
@@ -125,6 +126,48 @@ def empty_tile(bg, dot, dotted: bool) -> Image.Image:
     return img
 
 
+def well_tile(bg, line) -> Image.Image:
+    """One well cell: background plus a 1px grid line on its top and left.
+
+    Baking the grid into the tile keeps it crisp at every UI scale; thin quads
+    drawn as separate rects can vanish or alias when the client's scale is
+    fractional.
+    """
+    img = Image.new("RGBA", (ART, ART), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, 7, 7], fill=bg)
+    d.line([0, 0, 7, 0], fill=line)
+    d.line([0, 0, 0, 7], fill=line)
+    return img
+
+
+def neon_block_tile() -> Image.Image:
+    """Neon block: a bright 1px stroke around a 40% fill.
+
+    The canvas original does fillRect at 40% alpha then strokeRect; the same
+    look falls out of a white tile whose alpha is 0.4 inside and 1.0 on the
+    edge, because the vertex colour tints both channels.
+    """
+    img = Image.new("RGBA", (ART, ART), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, 7, 7], fill=(255, 255, 255, 255))
+    d.rectangle([1, 1, 6, 6], fill=(255, 255, 255, 112))
+    d.rectangle([2, 2, 5, 5], fill=(255, 255, 255, 92))
+    return img
+
+
+def neon_ghost_tile() -> Image.Image:
+    """Dashed outline for the landing preview (no fill)."""
+    img = Image.new("RGBA", (ART, ART), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for i in range(0, 8, 2):
+        d.point((i, 0), fill=(255, 255, 255, 255))
+        d.point((i + 1, 7), fill=(255, 255, 255, 255))
+        d.point((0, i + 1), fill=(255, 255, 255, 255))
+        d.point((7, i), fill=(255, 255, 255, 255))
+    return img
+
+
 def glyph_tile(rows) -> Image.Image:
     img = Image.new("RGBA", (ART, ART), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -201,8 +244,13 @@ def build_atlas():
 
     add("gb_block", block_tile(GB_DARKEST, GB_DARK, GB_LIGHT))
     add("gb_empty", empty_tile(GB_LIGHTEST, GB_LIGHT, True))
+    add("gb_well", well_tile(GB_LIGHTEST, GB_LIGHT))
     add("snes_block", snes_block_tile())
     add("snes_empty", empty_tile((6, 6, 10, 255), (26, 26, 36, 255), True))
+    add("snes_well", well_tile((0, 0, 0, 255), (34, 34, 46, 255)))
+    add("neon_block", neon_block_tile())
+    add("neon_ghost", neon_ghost_tile())
+    add("neon_well", well_tile((0, 0, 0, 255), (58, 0, 62, 255)))
     add("dot", empty_tile((0, 0, 0, 0), (70, 70, 90, 255), True))
     for ch in FONT:
         add("font_" + ch, glyph_tile(FONT[ch]))
@@ -295,6 +343,56 @@ def lowpass(samples, alpha=0.35):
     return out
 
 
+def _ogg_crc_table():
+    table = []
+    for i in range(256):
+        r = i << 24
+        for _ in range(8):
+            if r & 0x80000000:
+                r = ((r << 1) ^ 0x04C11DB7) & 0xFFFFFFFF
+            else:
+                r = (r << 1) & 0xFFFFFFFF
+        table.append(r)
+    return table
+
+
+_OGG_CRC = _ogg_crc_table()
+
+
+def _ogg_crc(data) -> int:
+    crc = 0
+    for b in data:
+        crc = ((crc << 8) & 0xFFFFFFFF) ^ _OGG_CRC[((crc >> 24) & 0xFF) ^ b]
+    return crc
+
+
+def _fix_ogg_serial(path: Path) -> None:
+    """Give every OGG file a stable stream serial and recompute page CRCs.
+
+    libsndfile picks a random OGG serial number per encode, so two runs of the
+    generator produce byte-different (but identical-sounding) files. A serial
+    derived from the file name makes the checked-in audio reproducible.
+    """
+    data = bytearray(path.read_bytes())
+    serial = int.from_bytes(
+        hashlib.sha1(path.stem.encode("utf-8")).digest()[:4], "little")
+    offset = 0
+    while offset < len(data):
+        if data[offset:offset + 4] != b"OggS":
+            raise ValueError(f"{path}: not an OGG page at byte {offset}")
+        segments = data[offset + 26]
+        table_start = offset + 27
+        body = sum(data[table_start:table_start + segments])
+        page_end = table_start + segments + body
+        page = data[offset:page_end]
+        page[14:18] = serial.to_bytes(4, "little")
+        page[22:26] = b"\x00\x00\x00\x00"
+        page[22:26] = _ogg_crc(page).to_bytes(4, "little")
+        data[offset:page_end] = page
+        offset = page_end
+    path.write_bytes(data)
+
+
 def to_ogg(path: Path, samples):
     """Write 16-bit mono OGG Vorbis. PlaySoundFile only reliably takes ogg."""
     import soundfile as sf
@@ -303,6 +401,7 @@ def to_ogg(path: Path, samples):
     if peak > 0.999:
         samples = [s * 0.999 / peak for s in samples]
     sf.write(str(path), samples, SAMPLE_RATE, format="OGG", subtype="VORBIS")
+    _fix_ogg_serial(path)
     AUDIO[path.stem] = round(len(samples) / SAMPLE_RATE, 3)
 
 
@@ -381,6 +480,10 @@ def make_sfx(out_dir: Path):
     blip("over", [(0.10, 392.0), (0.10, 349.2), (0.10, 311.1), (0.10, 261.6),
                   (0.32, 196.0)], duty=0.5, volume=0.34)
     blip("start", [(0.05, 523.3), (0.05, 784.0), (0.12, 1046.5)], duty=0.25, volume=0.32)
+    # Hard drop: a short fall into a thud, like the arcade build's noise burst.
+    blip("hard", [(0.012, 261.6), (0.010, 196.0), (0.055, 98.0)], duty=0.5, volume=0.42)
+    # Hold: two quick rising blips.
+    blip("hold", [(0.030, 659.3), (0.045, 987.8)], duty=0.125, volume=0.26)
 
 
 def make_music(out_dir: Path):

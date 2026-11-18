@@ -1,4 +1,4 @@
-# Publishes 0.1.0: a GitHub release on every version tag, CurseForge once the
+# Publishes a GitHub release on every version tag, and CurseForge once the
 # project is configured.
 #
 # Trust boundaries, in order of importance:

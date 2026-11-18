@@ -321,6 +321,208 @@ do
 	eq("input reset clears held keys", next(e.held), nil)
 end
 
+--------------------------------------------------------------------------- modern rules
+
+do
+	-- Guideline gravity: 60 frames per row at level 0.
+	local e = newGame("modern")
+	local y = e.piece.y
+	for _ = 1, 59 do e:step() end
+	eq("modern level 0: still level after 59 frames", e.piece.y, y)
+	e:step()
+	eq("modern level 0: drops on frame 60", e.piece.y, y + 1)
+
+	-- Soft drop is 20G: ceil(60/20) = 3 frames per cell.
+	local s = newGame("modern")
+	s:press("down")
+	local sy = s.piece.y
+	for _ = 1, 2 do s:step() end
+	eq("modern soft drop waits 3 frames", s.piece.y, sy)
+	s:step()
+	eq("modern soft drop moves", s.piece.y, sy + 1)
+	eq("modern soft drop scores 1 per cell", s.score, 1)
+	s:release("down")
+end
+
+do
+	-- 7-bag: every bag is a permutation of all seven pieces.
+	local e = Engine.new("modern", lcg(99))
+	e:start(0)
+	e.bag, e.queue = {}, {}
+	for round = 1, 2 do
+		local seen, kinds = {}, 0
+		for _ = 1, 7 do
+			local t = e:nextFromSource()
+			if not seen[t] then seen[t] = true; kinds = kinds + 1 end
+		end
+		eq("7-bag round " .. round .. " deals all seven", kinds, 7)
+	end
+end
+
+do
+	-- SRS I-piece kick: 0->R needs (-2,0) because the first spot is blocked.
+	local e = newGame("modern")
+	forcePiece(e, "I", 0, 0, 0)
+	e.board[0][2] = "J"
+	e:press("rotate_cw")
+	eq("I kick rotates", e.piece.rot, 1)
+	eq("I kick moves two left", e.piece.x, -2)
+
+	-- SRS J/L/S/T/Z kick: 0->L needs (+1,0).
+	local t = newGame("modern")
+	forcePiece(t, "T", 0, 0, 0)
+	t.board[2][1] = "J"
+	t:press("rotate_ccw")
+	eq("T kick rotates", t.piece.rot, 3)
+	eq("T kick moves one right", t.piece.x, 1)
+end
+
+do
+	-- Hard drop: instant lock, two points per row.
+	local e = newGame("modern")
+	forcePiece(e, "T", 3, 0, 0)
+	e.events = {}
+	local dropped = e:hardDrop()
+	eq("hard drop falls to the floor", dropped, e.rows - 2)
+	eq("hard drop scores 2 per row", e.score, (e.rows - 2) * 2)
+	check("hard drop locks at once", e.piece == nil)
+	eq("hard drop goes to ARE", e.phase, "are")
+	local kinds = {}
+	for _, ev in ipairs(e.events) do kinds[ev.type] = true end
+	check("hard drop emits an event", kinds.harddrop == true)
+end
+
+do
+	-- Hold swaps once, then stays locked until the next piece spawns.
+	local e = newGame("modern")
+	local first = e.piece.type
+	local upcoming = e.queue[1]
+	check("hold works", e:hold() == true)
+	eq("hold stores the active piece", e.holdType, first)
+	eq("hold pulls the next piece", e.piece.type, upcoming)
+	eq("hold cannot repeat on the same piece", e.canHold, false)
+	check("second hold is ignored", e:hold() == false)
+
+	-- A fresh piece re-arms hold, and the swap goes both ways.
+	local held = e.holdType
+	e.piece = nil
+	e:spawn()
+	local before = e.piece.type
+	eq("hold re-arms on the next piece", e.canHold, true)
+	check("hold swaps", e:hold() == true)
+	eq("hold puts the old piece back", e.piece.type, held)
+	eq("hold takes the active piece", e.holdType, before)
+end
+
+do
+	-- Ghost: the landing preview sits on the floor and leaves the piece alone.
+	local e = newGame("modern")
+	forcePiece(e, "O", 3, 0, 0)
+	local ghost = e:ghostCells()
+	eq("ghost has four cells", #ghost, 4)
+	local bottom = 0
+	for i = 1, #ghost do
+		if ghost[i][2] > bottom then bottom = ghost[i][2] end
+	end
+	eq("ghost bottom reaches the last row", bottom, e.rows - 1)
+	eq("ghost does not move the piece", e.piece.y, 0)
+
+	local g = newGame("gb")
+	eq("retro profiles have no ghost", #g:ghostCells(), 0)
+end
+
+do
+	-- Lock delay: 30 frames resting, movement resets it up to 15 times.
+	local e = newGame("modern")
+	forcePiece(e, "O", 3, e.rows - 2, 0)
+	e.lockTimer = 29
+	e:step()
+	check("lock delay locks after 30 frames", e.piece == nil)
+
+	local r = newGame("modern")
+	forcePiece(r, "O", 3, r.rows - 2, 0)
+	r.lockTimer, r.lockResets = 29, 0
+	r:press("left")
+	r:release("left")
+	eq("movement resets the lock timer", r.lockTimer, 0)
+	eq("movement counts a reset", r.lockResets, 1)
+	r:step()
+	check("a reset keeps the piece alive", r.piece ~= nil)
+
+	-- At the reset cap the timer runs again even when the piece moves.
+	r.lockResets = 15
+	r.lockTimer = 29
+	r:press("right")
+	r:release("right")
+	eq("movement cannot reset past the cap", r.lockTimer, 29)
+	r:step()
+	check("the piece locks after the reset cap", r.piece == nil)
+end
+
+do
+	-- Guideline scoring: 100 for a single, with a stray block so it is not a
+	-- perfect clear.
+	local e = newGame("modern")
+	e.board[0][0] = "J"
+	forcePiece(e, "I", 3, 18, 0)
+	for x = 0, 2 do e.board[19][x] = "J" end
+	for x = 7, 9 do e.board[19][x] = "J" end
+	e:lock()
+	eq("modern single scores 100", e.score, 100)
+	eq("modern single clears one line", e.lines, 1)
+end
+
+do
+	-- Perfect clear: single 100 + 800 bonus.
+	local e = newGame("modern")
+	forcePiece(e, "I", 3, 18, 0)
+	for x = 0, 2 do e.board[19][x] = "J" end
+	for x = 7, 9 do e.board[19][x] = "J" end
+	e:lock()
+	eq("perfect clear adds 800", e.score, 900)
+end
+
+do
+	-- Back-to-back tetris: 800, then 800 x 1.5 + combo.
+	local e = newGame("modern")
+	e.board[0][0] = "J" -- keeps the board from being a perfect clear
+	for y = 16, 19 do
+		for x = 0, 8 do e.board[y][x] = "J" end
+	end
+	forcePiece(e, "I", 7, 16, 1)
+	e:lock()
+	eq("modern tetris scores 800", e.score, 800)
+	eq("tetris arms back-to-back", e.b2b, true)
+
+	for _ = 1, 40 do
+		if e.piece then break end
+		e:step()
+	end
+	for y = 16, 19 do
+		for x = 0, 8 do e.board[y][x] = "J" end
+	end
+	forcePiece(e, "I", 7, 16, 1)
+	e:lock()
+	eq("back-to-back tetris adds 1200 + combo", e.score, 800 + 1200 + 50)
+	eq("combo counts the second clear", e.combo, 2)
+end
+
+do
+	-- T-spin: rotate into a notch, then clear a single.
+	local e = newGame("modern")
+	forcePiece(e, "T", 3, 17, 2)
+	for x = 0, 2 do e.board[19][x] = "J" end
+	for x = 6, 9 do e.board[19][x] = "J" end
+	e.board[17][3] = "J"    -- back corner
+	e.board[19][3] = "J"    -- front corner
+	e.board[19][5] = "J"    -- front corner
+	e.lastAction = "rotate"
+	eq("full T-spin detected", e:detectTSpin(), "full")
+	e:lock()
+	eq("T-spin single scores 800", e.score, 800)
+	eq("T-spin clears the line", e.lines, 1)
+end
+
 --------------------------------------------------------------------------- report
 
 print(string.format("%d passed, %d failed", passed, failed))

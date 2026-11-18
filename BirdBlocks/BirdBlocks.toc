@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Bird Blocks
-## Notes: Game Boy and NES Tetris, playable on the flight-path bird. /blocks to open.
+## Notes: Modern neon Tetris plus Game Boy and NES modes, playable on the flight-path bird. /blocks to open.
 ## Author: felippeb
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: BirdBlocksDB
 ## IconTexture: Interface\AddOns\BirdBlocks\icon.tga
 ## X-Category: Miscellaneous

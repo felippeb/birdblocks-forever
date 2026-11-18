@@ -52,6 +52,29 @@ local function paint(engine, rows)
 	end
 end
 
+local NICE_MODERN = {
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"..........",
+	"........L.",
+	".......LLL",
+	"...S....L.",
+	"...SS.ZZ..",
+	".JJSSZZTT.",
+	"JJJOOZZTTT",
+}
+
 local NICE_GB = {
 	"..........",
 	"..........",
@@ -96,60 +119,78 @@ local NICE_SNES = {
 	"..ISSSSITT",
 }
 
--- 1. Game Boy title
-UI:Open(false)
-Mock.time = 0.2
-frame("gb_title")
+local function title(name, profile, time)
+	UI:SetProfile(profile)
+	Mock.time = time
+	frame(name)
+end
 
--- 2. Game Boy gameplay
-Mock.SendKey(UI.frame, "ENTER", true)
-Mock.SendKey(UI.frame, "ENTER", false)
-local e = UI.engine
-e:step() -- ARE -> spawn
-paint(e, NICE_GB)
-e.score, e.lines, e.level = 12340, 37, 4
-e.nextType = "S"
-e.piece = { type = "I", x = 5, y = 3, rot = 1 }
-Mock.Advance(0.05)
-frame("gb_game")
+local function play(name, profile, nice, score, lines, level, piece, hold)
+	UI:SetProfile(profile)
+	local e = UI.engine
+	e:start(0)
+	e.areTimer = 1
+	e:step() -- ARE -> spawn
+	paint(e, nice)
+	e.score, e.lines, e.level = score, lines, level
+	e.piece = piece
+	if hold then
+		e.holdType = hold
+		e.canHold = false
+	end
+	frame(name)
+	return e
+end
 
--- 3. Game Boy pause
-e:togglePause()
+-- Modern neon cabinet. The default profile, so it leads.
+title("modern_title", "modern", 0.2)
+local m = play("modern_game", "modern", NICE_MODERN, 4850, 12, 1,
+	{ type = "I", x = 3, y = 2, rot = 0 }, "J")
+
+m:togglePause()
+frame("modern_pause")
+m:togglePause()
+
+m.phase = "clearing"
+m.clearTimer = 18
+m.clearRows = { 18, 19 }
+m.piece = nil
+frame("modern_clear")
+
+m.phase = "over"
+m.score = 128450
+frame("modern_over")
+
+-- Game Boy, for the 1989 ruleset.
+title("gb_title", "gb", 0.2)
+local g = play("gb_game", "gb", NICE_GB, 12340, 37, 4,
+	{ type = "I", x = 5, y = 3, rot = 1 })
+
+g:togglePause()
 frame("gb_pause")
-e:togglePause()
+g:togglePause()
 
--- 4. Game Boy line clear blink
-e.phase = "clearing"
-e.clearTimer = 34
-e.clearRows = { 16 }
-e.piece = nil
+g.phase = "clearing"
+g.clearTimer = 34
+g.clearRows = { 16 }
+g.piece = nil
 frame("gb_clear")
-e.phase = "falling"
-e.clearRows = {}
-e.piece = { type = "T", x = 3, y = 6, rot = 0 }
 
--- 5. Game Boy game over
-e.phase = "over"
-e.score = 98760
+g.phase = "over"
+g.score = 98760
 frame("gb_over")
 
--- 6. SNES mode title + gameplay
-UI:SetProfile("snes")
-Mock.time = 0.4
-frame("snes_title")
+-- SNES / NES, same rules, different timings and palette.
+title("snes_title", "snes", 0.4)
+local s = play("snes_game", "snes", NICE_SNES, 54320, 88, 8,
+	{ type = "L", x = 3, y = 4, rot = 1 })
 
-Mock.SendKey(UI.frame, "ENTER", true)
-Mock.SendKey(UI.frame, "ENTER", false)
-e = UI.engine
-e:step() -- ARE -> spawn
-paint(e, NICE_SNES)
-e.score, e.lines, e.level = 54320, 88, 8
-e.nextType = "Z"
-e.piece = { type = "L", x = 3, y = 4, rot = 1 }
-Mock.Advance(0.05)
-frame("snes_game")
-
-e:togglePause()
+s:togglePause()
 frame("snes_pause")
+s:togglePause()
+
+s.phase = "over"
+s.score = 246800
+frame("snes_over")
 
 print("\nwrote draw lists to " .. outdir)

@@ -16,7 +16,7 @@ local Engine, Render, View, Sound = BB.Engine, BB.Render, BB.View, BB.Sound
 local floor, min, max = math.floor, math.min, math.max
 
 local DEFAULTS = {
-	profile = "gb",
+	profile = "modern",
 	zoom = 0,          -- 0 = fit the screen
 	sound = true,
 	music = true,
@@ -30,15 +30,17 @@ local DEFAULTS = {
 local PAD = 6
 local BAR = 22
 
--- key -> game action. Arrows move, Up/X rotate, Z/Ctrl rotate back.
+-- key -> game action. Arrows move, Up/X rotate, Z/Ctrl rotate back, Space
+-- hard drops, C or Shift holds.
 local KEYMAP = {
 	LEFT = "left", A = "left",
 	RIGHT = "right", D = "right",
 	DOWN = "down", S = "down",
 	UP = "rotate_cw", W = "rotate_cw", X = "rotate_cw",
 	Z = "rotate_ccw", LCTRL = "rotate_ccw", RCTRL = "rotate_ccw",
+	C = "hold", LSHIFT = "hold", RSHIFT = "hold",
 	P = "pause", PAUSE = "pause",
-	SPACE = "start", ENTER = "start",
+	SPACE = "harddrop", ENTER = "start",
 	M = "music",
 	MINUS = "zoomout", NUMPADMINUS = "zoomout",
 	EQUALS = "zoomin", PLUS = "zoomin", NUMPADPLUS = "zoomin",
@@ -69,7 +71,13 @@ function UI:Init()
 		end
 	end
 	self.db.hi = self.db.hi or {}
-	if not View.LAYOUT[self.db.profile] then self.db.profile = "gb" end
+	if not View.LAYOUT[self.db.profile] then self.db.profile = "modern" end
+	-- 0.2 made the modern ruleset the default. Players upgrading from 0.1
+	-- never chose a profile, so adopt modern once; a manual choice sticks.
+	if not self.db.profilePicked and not self.db.modernAdopted then
+		self.db.profile = "modern"
+		self.db.modernAdopted = true
+	end
 
 	Sound.Init(BirdBlocksAudio, { sfx = self.db.sound, music = self.db.music })
 	self:CreateFrame()
@@ -121,7 +129,7 @@ function UI:CreateFrame()
 
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	title:SetPoint("LEFT", bar, "LEFT", 8, 0)
-	title:SetText("|cff9bbc0fBIRD BLOCKS|r  |cff777777arrows move, up rotate, esc pause, m music, wheel zoom|r")
+	title:SetText("|cff9bbc0fBIRD BLOCKS|r  |cff777777arrows move, space drop, c hold, esc pause, m music, wheel zoom|r")
 	self.titleText = title
 
 	local close = CreateFrame("Button", nil, bar, "UIPanelCloseButton")
@@ -157,11 +165,13 @@ function UI:CreateFrame()
 end
 
 function UI:SetProfile(id, initial)
-	if not View.LAYOUT[id] then id = "gb" end
+	if not View.LAYOUT[id] then id = "modern" end
 	local changed = self.db.profile ~= id or not self.engine
 	self.db.profile = id
 	if not changed and not initial then return end
 	self.screen:setProfile(id)
+	self.screen:resetFx()
+	if self.render then self.render.ox, self.render.oy = 0, 0 end
 	self.engine = Engine.new(id)
 	self.engine.phase = "title"
 	if initial then
@@ -290,6 +300,8 @@ end
 function UI:StartGame()
 	if not self.engine then return end
 	self.engine:start(self.db.startLevel)
+	if self.screen then self.screen:resetFx() end
+	if self.render then self.render.ox, self.render.oy = 0, 0 end
 	Sound.Play("start")
 	if self.db.music then Sound.StartMusic() end
 end
@@ -353,7 +365,7 @@ function UI:OnKeyDown(key)
 		elseif action == "right" then
 			self.db.startLevel = clampLevel((self.db.startLevel or 0) + 1)
 			self:Draw()
-		elseif action == "start" then
+		elseif action == "start" or action == "harddrop" then
 			self:StartGame()
 			self:Draw()
 		end
@@ -361,7 +373,7 @@ function UI:OnKeyDown(key)
 	end
 
 	if e.phase == "over" then
-		if action == "start" then
+		if action == "start" or action == "harddrop" then
 			self:StartGame()
 			self:Draw()
 		end
@@ -427,6 +439,7 @@ function UI:OnUpdate(elapsed)
 	if not self.shown then return end
 	self:SyncAudio()
 	if elapsed > 0.25 then elapsed = 0.25 end
+	if self.screen and self.screen.updateFx then self.screen:updateFx(elapsed) end
 	self.accumulator = self.accumulator + elapsed
 	local ticks = floor(self.accumulator * 60)
 	if ticks < 1 then return end
@@ -451,12 +464,19 @@ function UI:Tick()
 			Sound.Play("move")
 		elseif ev.type == "rotate" then
 			Sound.Play("rotate")
+		elseif ev.type == "harddrop" then
+			Sound.Play("hard")
+			if self.screen then self.screen:celebrate(ev, e) end
+		elseif ev.type == "hold" then
+			Sound.Play("hold")
 		elseif ev.type == "lock" then
 			Sound.Play("lock")
 		elseif ev.type == "line" then
 			Sound.Play(ev.tetris and "tetris" or "line")
+			if self.screen then self.screen:celebrate(ev, e) end
 		elseif ev.type == "level" then
 			Sound.Play("level")
+			if self.screen then self.screen:celebrate(ev, e) end
 		elseif ev.type == "over" then
 			Sound.Play("over")
 			self:RecordScore()
@@ -474,6 +494,17 @@ function UI:Draw()
 	local r = self.render
 	local e = self.engine
 	local hi = self.db.hi[e.profile.id] or 0
+	local fx = self.screen and self.screen.fx
+
+	-- Screen shake: offsets every quad by a pixel or two. Deterministic so
+	-- screenshots and tests never depend on RNG state.
+	r.ox, r.oy = 0, 0
+	if fx and fx.shake and fx.shake > 0 then
+		local amp = fx.shake * 6 * r:getScale()
+		local t = e.frames or 0
+		r.ox = floor(math.sin(t * 2.7) * amp + 0.5)
+		r.oy = floor(math.cos(t * 3.1) * amp + 0.5)
+	end
 
 	r:beginFrame()
 	if e.phase == "title" then
@@ -499,7 +530,7 @@ function UI:Draw()
 			self.screen:drawBox({
 				{ "GAME OVER", 2 },
 				{ "SCORE " .. View.pad(e.score, 6), 1 },
-				{ "PRESS ENTER", 1 },
+				{ e.profile.modern and "PRESS ENTER OR SPACE" or "PRESS ENTER", 1 },
 			})
 		end
 	end
@@ -557,10 +588,16 @@ function UI:RegisterSlash()
 		local cmd, rest = msg:match("^(%S*)%s*(.*)$")
 		if cmd == "" or cmd == "toggle" then
 			self:Toggle()
+		elseif cmd == "modern" then
+			self.db.profilePicked = true
+			self:SetProfile("modern")
+			self:Print("modern mode (SRS, hold, hard drop)")
 		elseif cmd == "gb" or cmd == "gameboy" then
+			self.db.profilePicked = true
 			self:SetProfile("gb")
 			self:Print("Game Boy mode")
 		elseif cmd == "snes" or cmd == "nes" then
+			self.db.profilePicked = true
 			self:SetProfile("snes")
 			self:Print("SNES mode")
 		elseif cmd == "auto" then
@@ -599,7 +636,7 @@ function UI:RegisterSlash()
 			self:Print("high scores cleared")
 		elseif cmd == "help" then
 			self:Print("/blocks - open or close")
-			self:Print("/blocks gb|snes - pick the version")
+			self:Print("/blocks modern|gb|snes - pick the version")
 			self:Print("/blocks auto - auto-open on taxi")
 			self:Print("/blocks music|sound - toggle audio")
 			self:Print("/blocks zoom N - 1..8, 0 = fit screen")
